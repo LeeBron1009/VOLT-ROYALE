@@ -78,7 +78,7 @@ table{border-collapse:collapse;width:100%;min-width:520px}
 th,td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.1);text-align:left;font-size:13px}
 th{color:var(--gold);letter-spacing:.1em}
 .fine{opacity:.6;font-size:12px;margin-top:10px}
-#game,#bj{position:fixed;inset:0;z-index:5;display:none;flex-direction:column;background:#05070f}
+#game,.tbl{position:fixed;inset:0;z-index:5;display:none;flex-direction:column;background:#05070f}
 #hud,.bjbar{display:flex;align-items:center;gap:10px;padding:max(8px,env(safe-area-inset-top)) 12px 8px;background:rgba(10,14,30,.92);border-bottom:1px solid rgba(255,209,102,.35)}
 #hud .sc{flex:1;min-width:0}
 #hScore{font-size:clamp(22px,6vw,34px);font-weight:900;font-variant-numeric:tabular-nums;color:var(--c1);text-shadow:0 0 12px rgba(0,240,255,.6);line-height:1}
@@ -136,7 +136,7 @@ input[type=range]{width:100%;accent-color:var(--gold);margin:10px 0}
 .bjbar .t{font-weight:900;letter-spacing:.2em;color:var(--gold)}
 .felt{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-around;align-items:center;padding:12px;background:radial-gradient(ellipse at 50% 40%,#0f6b62 0%,#08403c 55%,#04201f 100%);position:relative;overflow:hidden}
 .felt::before{content:"";position:absolute;inset:10px;border:2px solid rgba(255,209,102,.4);border-radius:26px;pointer-events:none;box-shadow:inset 0 0 40px rgba(0,0,0,.4)}
-.felt::after{content:"BLACKJACK PAYS 3 TO 2";position:absolute;top:50%;left:0;right:0;text-align:center;letter-spacing:.3em;font-size:12px;color:rgba(255,209,102,.35);transform:translateY(-50%);pointer-events:none}
+.felt::after{content:attr(data-t);position:absolute;top:50%;left:0;right:0;text-align:center;letter-spacing:.3em;font-size:12px;color:rgba(255,209,102,.35);transform:translateY(-50%);pointer-events:none}
 .zone{text-align:center;z-index:1}
 .lbl{font-size:13px;letter-spacing:.15em;opacity:.9;margin-bottom:8px}
 .lbl b{color:var(--gold);margin-left:6px}
@@ -159,6 +159,21 @@ input[type=range]{width:100%;accent-color:var(--gold);margin:10px 0}
 .chp:active{transform:scale(.92)}
 .betline{font-size:15px}.betline b{color:var(--gold);font-size:22px}
 .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+
+.phs{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.ph{padding:6px 8px;border-radius:12px;border:2px solid transparent}
+.ph.act{border-color:var(--gold);background:rgba(255,209,102,.1)}
+.ph .hand{min-height:80px}
+.multi .pc{width:clamp(36px,9.5vw,48px);margin-left:-20px}
+.multi .pc .s{font-size:clamp(16px,4.5vw,22px)}
+.pc.slot{background:transparent;border:2px dashed rgba(255,255,255,.25);box-shadow:none}
+.hand.spread{padding-left:0;gap:6px}.hand.spread .pc{margin-left:0;width:clamp(42px,12vw,56px)}
+.center{z-index:1;text-align:center}
+.potl{font-size:13px;letter-spacing:.08em;color:var(--gold);margin-bottom:6px}
+.msg{z-index:1;min-height:40px;text-align:center;font-size:clamp(16px,4.4vw,23px);font-weight:900;letter-spacing:.04em;text-shadow:0 2px 10px #000}
+.msg.win{color:#4dffa6}.msg.lose{color:#ff8fa1}.msg.push{color:var(--gold)}
+.mini{font-size:12px;opacity:.8;margin:2px 0}
+.ctrl .row .btn{min-width:84px}
 </style>
 </head>
 <body>
@@ -199,17 +214,47 @@ input[type=range]{width:100%;accent-color:var(--gold);margin:10px 0}
 <div class="art"><b>A♠</b><b>K♥</b></div>
 <div class="en">TABLE · CARDS</div>
 <h2>二十一點 BLACKJACK</h2>
-<p>比莊家更接近 21 點。Blackjack 賠 3:2，可以雙倍下注。想押多少自己決定。</p>
-<div class="tags"><span>要牌</span><span>停牌</span><span>雙倍</span><span>3:2</span></div>
+<p>比莊家更接近 21 點。Blackjack 賠 3:2，可以雙倍、分牌，莊家亮 A 時還能買保險。</p>
+<div class="tags"><span>要牌</span><span>雙倍</span><span>分牌</span><span>保險</span><span>3:2</span></div>
 <div class="price"><span>每手 5 ~ 5,000</span><span>BJ 賠 3:2</span></div>
 <div class="best">莊家 17 點停牌，4 副牌</div>
 <button class="play" data-start="bj">入座 ▶</button>
 </div>
+<div class="card bjc">
+<div class="art"><b>K♠</b><b>Q♥</b></div>
+<div class="en">TABLE · CARDS</div>
+<h2>賭場戰爭 CASINO WAR</h2>
+<p>你和莊家各翻一張牌，大的贏。平手時可以投降拿回一半，或加碼決戰。</p>
+<div class="tags"><span>比大小</span><span>決戰</span><span>投降</span></div>
+<div class="price"><span>每手 5 ~ 5,000</span><span>贏 1:1</span></div>
+<div class="best">6 副牌，A 最大</div>
+<button class="play" data-start="war">入座 ▶</button>
+</div>
+<div class="card bjc">
+<div class="art"><b>Q♦</b><b>Q♣</b></div>
+<div class="en">TABLE · POKER</div>
+<h2>三張牌撲克 3 CARD POKER</h2>
+<p>先下 Ante，看自己的三張牌，決定跟注（Play）或棄牌。還能加押 Pair Plus。</p>
+<div class="tags"><span>Ante</span><span>Play</span><span>Pair Plus</span></div>
+<div class="price"><span>Ante 5 ~ 2,000</span><span>順子以上有獎勵</span></div>
+<div class="best">莊家要 Q 以上才合格</div>
+<button class="play" data-start="tcp">入座 ▶</button>
+</div>
+<div class="card bjc">
+<div class="art"><b>A♠</b><b>A♥</b></div>
+<div class="en">TABLE · POKER vs AI</div>
+<h2>德州撲克 TEXAS HOLD'EM</h2>
+<p>一對一對電腦，翻牌、轉牌、河牌四輪下注。電腦會算勝率、虛張聲勢，也會棄牌。</p>
+<div class="tags"><span>對電腦</span><span>固定限注</span><span>四輪下注</span></div>
+<div class="price"><span>底注 5 ~ 500</span><span>贏走整個底池</span></div>
+<div class="best">每輪最多 3 次下注</div>
+<button class="play" data-start="hold">入座 ▶</button>
+</div>
 <div class="card soon">
 <div class="art">♠ ♥ ♦ ♣</div>
 <div class="en">COMING SOON</div>
-<h2>更多撲克遊戲</h2>
-<p>視訊撲克、百家樂⋯⋯製作中。</p>
+<h2>更多遊戲</h2>
+<p>視訊撲克、百家樂、高低牌⋯⋯製作中。</p>
 <button class="play" disabled>LOCKED</button>
 </div>
 </div>
@@ -250,20 +295,10 @@ input[type=range]{width:100%;accent-color:var(--gold);margin:10px 0}
 </div>
 </div>
 
-<div id="bj">
-<div class="bjbar">
-<button class="ib" id="bjExit">⌂</button>
-<div class="t">BLACKJACK 21</div>
-<div style="display:flex;gap:8px;align-items:center"><div class="wchip">⚡<b class="w-chips">0</b></div><button class="ib bankbtn" data-openbank style="width:auto;padding:0 10px">🏦</button></div>
-</div>
-<div class="felt">
-<div class="zone"><div class="lbl">莊家 <b id="dTot"></b></div><div class="hand" id="dHand"></div></div>
-<div id="bjMsg"></div>
-<div class="zone"><div class="lbl">你 <b id="pTot"></b></div><div class="hand" id="pHand"></div></div>
-</div>
-<div class="ctrl" id="bjCtrl"></div>
-</div>
-
+<div id="bj" class="tbl"><div class="bjbar"><button class="ib" id="bj-back">⌂</button><div class="t">BLACKJACK 21</div><div style="display:flex;gap:8px;align-items:center"><div class="wchip">⚡<b class="w-chips">0</b></div><button class="ib bankbtn" data-openbank style="width:auto;padding:0 10px">🏦</button></div></div><div class="felt" id="bj-felt" data-t="BLACKJACK PAYS 3 TO 2"></div><div class="ctrl" id="bj-ctrl"></div></div>
+<div id="war" class="tbl"><div class="bjbar"><button class="ib" id="war-back">⌂</button><div class="t">CASINO WAR</div><div style="display:flex;gap:8px;align-items:center"><div class="wchip">⚡<b class="w-chips">0</b></div><button class="ib bankbtn" data-openbank style="width:auto;padding:0 10px">🏦</button></div></div><div class="felt" id="war-felt" data-t="TIE: SURRENDER OR GO TO WAR"></div><div class="ctrl" id="war-ctrl"></div></div>
+<div id="tcp" class="tbl"><div class="bjbar"><button class="ib" id="tcp-back">⌂</button><div class="t">3 CARD POKER</div><div style="display:flex;gap:8px;align-items:center"><div class="wchip">⚡<b class="w-chips">0</b></div><button class="ib bankbtn" data-openbank style="width:auto;padding:0 10px">🏦</button></div></div><div class="felt" id="tcp-felt" data-t="DEALER QUALIFIES WITH QUEEN HIGH"></div><div class="ctrl" id="tcp-ctrl"></div></div>
+<div id="hold" class="tbl"><div class="bjbar"><button class="ib" id="hold-back">⌂</button><div class="t">TEXAS HOLD'EM</div><div style="display:flex;gap:8px;align-items:center"><div class="wchip">⚡<b class="w-chips">0</b></div><button class="ib bankbtn" data-openbank style="width:auto;padding:0 10px">🏦</button></div></div><div class="felt" id="hold-felt" data-t="HEADS-UP · FIXED LIMIT"></div><div class="ctrl" id="hold-ctrl"></div></div>
 <div id="modal"></div>
 <div id="toast"></div>
 
@@ -753,7 +788,7 @@ function show(n){
  $('#lobby').style.display=n==='lobby'?'block':'none';
  $('#bg').style.display=n==='lobby'?'block':'none';
  $('#game').style.display=n==='game'?'flex':'none';
- $('#bj').style.display=n==='bj'?'flex':'none';
+ for(const id of TBLS)$('#'+id).style.display=n===id?'flex':'none';
 }
 function startGame(mode,bet){
  if(chips()<bet){openBank('籌碼不夠。');return}
@@ -777,7 +812,7 @@ function refreshStats(){
 document.querySelectorAll('[data-start]').forEach(b=>b.addEventListener('click',()=>{
  const m=b.dataset.start;
  if(AC&&AC.state==='suspended')AC.resume();
- if(m==='bj')bjOpen();else openBetPicker(m);
+ const T={bj:bjOpen,war:wrOpen,tcp:tcOpen,hold:hdOpen};if(T[m])T[m]();else openBetPicker(m);
 }));
 $('#bExit').addEventListener('click',()=>toLobby());
 $('#bPause').addEventListener('click',togglePause);
@@ -814,26 +849,16 @@ addEventListener('keyup',e=>{
  else if(['ArrowRight','/','m','M','d','D'].includes(k))kb.R=false;
 });
 
-/* ---------- 二十一點 ---------- */
-const BJ={shoe:[],sel:25,stake:0,p:[],d:[],phase:'bet',hide:true,msg:'',cls:'',busy:false};
+/* ---------- 撲克共用 ---------- */
+const TBLS=['bj','war','tcp','hold'];
 const RANKS=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
-function newShoe(){
- const s=[];for(let k=0;k<4;k++)for(const su of ['♠','♥','♦','♣'])for(const r of RANKS)s.push({r,s:su,nw:false});
- for(let i=s.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[s[i],s[j]]=[s[j],s[i]]}
- BJ.shoe=s;
-}
-function bjDraw(){if(BJ.shoe.length<20)newShoe();const c=BJ.shoe.pop();c.nw=true;sfx('card');return c}
-function bjVal(h){
- let t=0,a=0;
- for(const c of h){if(c.r==='A'){t+=11;a++}else if(['10','J','Q','K'].includes(c.r))t+=10;else t+=+c.r}
- while(t>21&&a>0){t-=10;a--}
- return t;
-}
-function bjOpen(){
- if(BJ.shoe.length<20)newShoe();
- show('bj');BJ.phase='bet';BJ.p=[];BJ.d=[];BJ.msg='選擇押注，然後發牌';BJ.cls='';BJ.hide=true;BJ.busy=false;
- const ch=chips();BJ.sel=ch<BJ_MIN?0:Math.min(Math.max(BJ.sel,BJ_MIN),ch,BJ_MAX);
- updateWallet();bjRender();
+const VAL={A:14,K:13,Q:12,J:11};
+function rv(r){return VAL[r]||+r}
+class Deck{
+ constructor(n){this.n=n;this.cards=[];this.shuffle()}
+ shuffle(){const s=[];for(let k=0;k<this.n;k++)for(const su of ['♠','♥','♦','♣'])for(const r of RANKS)s.push({r,s:su,v:rv(r),nw:false});
+  for(let i=s.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[s[i],s[j]]=[s[j],s[i]]}this.cards=s}
+ draw(quiet){if(this.cards.length<(this.n===1?1:20))this.shuffle();const c=this.cards.pop();c.nw=true;if(!quiet)sfx('card');return c}
 }
 function cardHtml(c,hidden){
  if(hidden)return '<div class="pc back"></div>';
@@ -841,91 +866,421 @@ function cardHtml(c,hidden){
  const cls='pc'+(red?' red':'')+(c.nw?' deal':'');c.nw=false;
  return '<div class="'+cls+'"><span class="r">'+c.r+'</span><span class="s">'+c.s+'</span><span class="r b">'+c.r+'</span></div>';
 }
-function bjRender(){
- $('#dHand').innerHTML=BJ.d.map((c,i)=>cardHtml(c,BJ.hide&&i===1)).join('');
- $('#pHand').innerHTML=BJ.p.map(c=>cardHtml(c,false)).join('');
- $('#dTot').textContent=BJ.d.length?(BJ.hide?bjVal([BJ.d[0]]):bjVal(BJ.d)):'';
- $('#pTot').textContent=BJ.p.length?bjVal(BJ.p):'';
- const m=$('#bjMsg');m.textContent=BJ.msg;m.className=BJ.cls;
- const c=$('#bjCtrl'),ch=chips();
- if(BJ.phase==='bet'||BJ.phase==='done'){
-  const lowFunds=ch<BJ_MIN;
-  c.innerHTML='<div class="betline">押注 <b>'+BJ.sel.toLocaleString()+'</b>　<span style="opacity:.7">籌碼 '+ch.toLocaleString()+'</span></div>'+
-   '<div class="chips"><button class="chp c5" data-chip="5">5</button><button class="chp c25" data-chip="25">25</button><button class="chp c100" data-chip="100">100</button><button class="chp c500" data-chip="500">500</button></div>'+
-   '<div class="row"><button class="btn" data-bj="clear">清除</button><button class="btn" data-bj="max">MAX</button><button class="btn" data-bj="half">½</button>'+
-   (lowFunds?'<button class="btn gold" data-openbank2>🏦 去借錢</button>':'<button class="btn gold" data-bj="deal"'+(BJ.sel<BJ_MIN?' disabled':'')+'>發牌 ▶</button>')+'</div>';
- }else if(BJ.phase==='player'){
-  const can2=BJ.p.length===2&&ch>=BJ.stake;
-  c.innerHTML='<div class="betline">本手押注 <b>'+BJ.stake.toLocaleString()+'</b></div><div class="row"><button class="btn pri" data-bj="hit">要牌</button><button class="btn" data-bj="stand">停牌</button><button class="btn gold" data-bj="double"'+(can2?'':' disabled')+'>雙倍</button></div>';
- }else{
-  c.innerHTML='<div class="betline">莊家出牌中⋯</div>';
- }
+function zone(label,inner,cls){return '<div class="zone"><div class="lbl">'+label+'</div><div class="hand'+(cls||'')+'">'+inner+'</div></div>'}
+function msgHtml(m,c){return '<div class="msg '+(c||'')+'">'+(m||'&nbsp;')+'</div>'}
+function betHtml(sel,label,extra,mid){
+ const ch=chips();
+ return '<div class="betline">'+label+' <b>'+sel.toLocaleString()+'</b>　<span style="opacity:.7">籌碼 '+ch.toLocaleString()+'</span></div>'+(mid||'')+
+ '<div class="chips"><button class="chp c5" data-chip="5">5</button><button class="chp c25" data-chip="25">25</button><button class="chp c100" data-chip="100">100</button><button class="chp c500" data-chip="500">500</button></div>'+
+ '<div class="row"><button class="btn" data-a="clear">清除</button><button class="btn" data-a="max">MAX</button><button class="btn" data-a="half">½</button>'+extra+'</div>';
 }
-function bjFinish(res){
- const st=BJ.stake;let pay=0,msg,cls;
- if(res==='bj'){pay=Math.floor(st*2.5);msg='BLACKJACK！ +'+(pay-st).toLocaleString();cls='win'}
- else if(res==='win'){pay=st*2;msg='你贏了 +'+st.toLocaleString();cls='win'}
- else if(res==='push'){pay=st;msg='平手，退回押注';cls='push'}
- else{msg=(res==='bust'?'爆牌！ ':'莊家勝 ')+'-'+st.toLocaleString();cls='lose'}
- if(pay)setChips(chips()+pay);
- if(cls==='win')sfx('bonus');else if(cls==='lose')sfx('drain');
- BJ.hide=false;BJ.phase='done';BJ.msg=msg;BJ.cls=cls;BJ.busy=false;
- if(chips()<BJ_MIN)BJ.msg+='　籌碼不足，可以去銀行';
- BJ.sel=Math.min(st,chips(),BJ_MAX);
- bjRender();
+function dealBtn(o,cost){const low=chips()<Math.max(o.min,cost||0)||o.sel<o.min;return chips()<o.min?'<button class="btn gold" data-a="bank">🏦 去借錢</button>':'<button class="btn gold" data-a="deal"'+(low?' disabled':'')+'>發牌 ▶</button>'}
+function bindCtrl(id,o){
+ $('#'+id+'-ctrl').addEventListener('click',e=>{
+  if(e.target.closest('[data-a="bank"]')){openBank('籌碼不足。');return}
+  const c=e.target.closest('[data-chip]');if(c){betChip(o,+c.dataset.chip);return}
+  const b=e.target.closest('[data-a]');if(b)o.act(b.dataset.a);
+ });
+}
+function betAct(o,a){
+ if(a==='clear')o.sel=0;else if(a==='max')o.sel=Math.min(chips(),o.max);else if(a==='half')o.sel=Math.floor(o.sel/2);else return false;
+ o.reset();o.render();return true;
+}
+function betChip(o,v){o.sel=Math.min(o.sel+v,chips(),o.max);sfx('chip');o.reset();o.render()}
+function clampSel(o){const ch=chips();o.sel=ch<o.min?0:Math.min(Math.max(o.sel,o.min),ch,o.max)}
+function backFrom(o){
+ if(o.phase==='bet'||o.phase==='done'){if(o.cancel)o.cancel();show('lobby');refreshStats()}
+ else toast('這手還沒結束');
+}
+function cmpArr(a,b){for(let i=0;i<Math.max(a.length,b.length);i++){const d=(a[i]||0)-(b[i]||0);if(d)return d}return 0}
+function signed(n){return (n>0?'+':'')+n.toLocaleString()}
+
+/* ---------- 二十一點（含分牌、保險）---------- */
+const BJ={deck:new Deck(4),sel:25,min:5,max:5000,hands:[],ai:0,d:[],ins:0,phase:'bet',hide:true,msg:'',cls:'',last:25};
+BJ.reset=()=>{BJ.phase='bet';BJ.hands=[];BJ.d=[];BJ.msg='';BJ.cls='';BJ.hide=true;BJ.ins=0;BJ.ai=0};
+BJ.render=()=>bjRender();
+function bjCV(c){return c.r==='A'?11:['10','J','Q','K'].includes(c.r)?10:+c.r}
+function bjVal(h){let t=0,a=0;for(const c of h){t+=bjCV(c);if(c.r==='A')a++}while(t>21&&a>0){t-=10;a--}return t}
+function bjOpen(){show('bj');BJ.reset();BJ.msg='選擇押注，然後發牌';BJ.sel=BJ.last;clampSel(BJ);updateWallet();bjRender()}
+function bjRender(){
+ const dv=BJ.d.length?(BJ.hide?bjVal([BJ.d[0]]):bjVal(BJ.d)):'';
+ let ph='';
+ BJ.hands.forEach((h,i)=>{
+  ph+='<div class="ph'+(BJ.phase==='player'&&i===BJ.ai?' act':'')+'"><div class="hand">'+h.cards.map(c=>cardHtml(c)).join('')+'</div><div class="lbl">'+bjVal(h.cards)+' · 押 '+h.bet.toLocaleString()+(h.tag?' · '+h.tag:'')+'</div></div>';
+ });
+ $('#bj-felt').innerHTML=zone('莊家 <b>'+dv+'</b>',BJ.d.map((c,i)=>cardHtml(c,BJ.hide&&i===1)).join(''))+msgHtml(BJ.msg,BJ.cls)+
+  '<div class="zone'+(BJ.hands.length>1?' multi':'')+'">'+(ph?'<div class="phs">'+ph+'</div>':'<div class="lbl">你</div>')+'</div>';
+ const c=$('#bj-ctrl'),ch=chips();
+ if(BJ.phase==='bet'||BJ.phase==='done'){c.innerHTML=betHtml(BJ.sel,'押注',dealBtn(BJ,BJ.sel))}
+ else if(BJ.phase==='insurance'){
+  const cost=Math.floor(BJ.hands[0].bet/2);
+  c.innerHTML='<div class="betline">保險金 <b>'+cost+'</b>　<span style="opacity:.7">莊家有 Blackjack 時賠 2:1</span></div><div class="row"><button class="btn gold" data-a="ins"'+(ch>=cost&&cost>0?'':' disabled')+'>買保險</button><button class="btn" data-a="noins">不買</button></div>';
+ }else if(BJ.phase==='player'){
+  const h=BJ.hands[BJ.ai];
+  const can2=h.cards.length===2&&ch>=h.bet;
+  const canSp=h.cards.length===2&&bjCV(h.cards[0])===bjCV(h.cards[1])&&BJ.hands.length<4&&ch>=h.bet;
+  c.innerHTML='<div class="betline">第 '+(BJ.ai+1)+' / '+BJ.hands.length+' 手　押注 <b>'+h.bet.toLocaleString()+'</b></div><div class="row"><button class="btn pri" data-a="hit">要牌</button><button class="btn" data-a="stand">停牌</button><button class="btn gold" data-a="double"'+(can2?'':' disabled')+'>雙倍</button><button class="btn gold" data-a="split"'+(canSp?'':' disabled')+'>分牌</button></div>';
+ }else c.innerHTML='<div class="betline">莊家出牌中⋯</div>';
 }
 function bjDeal(){
- const ch=chips();if(BJ.sel<BJ_MIN||BJ.sel>ch)return;
- BJ.stake=BJ.sel;setChips(ch-BJ.stake);sfx('chip');
- BJ.p=[bjDraw(),bjDraw()];BJ.d=[bjDraw(),bjDraw()];BJ.hide=true;BJ.phase='player';BJ.msg='';BJ.cls='';
- const pb=bjVal(BJ.p)===21,db=bjVal(BJ.d)===21;
- if(pb||db){BJ.hide=false;bjRender();setTimeout(()=>bjFinish(pb&&db?'push':pb?'bj':'lose'),600);BJ.phase='dealer';return}
- bjRender();
+ const ch=chips();if(BJ.sel<BJ.min||BJ.sel>ch)return;
+ setChips(ch-BJ.sel);sfx('chip');BJ.last=BJ.sel;
+ BJ.hands=[{cards:[BJ.deck.draw(),BJ.deck.draw()],bet:BJ.sel,done:false,tag:'',split:false}];
+ BJ.d=[BJ.deck.draw(),BJ.deck.draw()];BJ.hide=true;BJ.ai=0;BJ.ins=0;BJ.msg='';BJ.cls='';
+ if(BJ.d[0].r==='A'){BJ.phase='insurance';BJ.msg='莊家亮出 A：要買保險嗎？';bjRender();return}
+ bjPeek();
 }
-function bjHit(){
- BJ.p.push(bjDraw());const v=bjVal(BJ.p);
- if(v>21){BJ.hide=false;BJ.phase='dealer';bjRender();setTimeout(()=>bjFinish('bust'),500)}
- else if(v===21){bjStand()}
- else bjRender();
+function bjPeek(){
+ const dbj=bjVal(BJ.d)===21,pbj=bjVal(BJ.hands[0].cards)===21;
+ BJ.msg='';
+ if(dbj||pbj){BJ.phase='dealer';BJ.hide=false;bjRender();setTimeout(bjSettle,700);return}
+ BJ.phase='player';bjRender();
 }
-function bjStand(){
- BJ.phase='dealer';BJ.hide=false;bjRender();
+function bjAdvance(){
+ while(BJ.ai<BJ.hands.length&&BJ.hands[BJ.ai].done)BJ.ai++;
+ if(BJ.ai>=BJ.hands.length){bjDealer();return}
+ BJ.phase='player';bjRender();
+}
+function bjDealer(){
+ BJ.phase='dealer';BJ.hide=false;BJ.ai=-1;bjRender();
+ const live=BJ.hands.some(h=>bjVal(h.cards)<=21);
  const play=()=>{
-  if(bjVal(BJ.d)<17){BJ.d.push(bjDraw());bjRender();setTimeout(play,650)}
-  else{
-   const pv=bjVal(BJ.p),dv=bjVal(BJ.d);
-   bjFinish(dv>21?'win':pv>dv?'win':pv===dv?'push':'lose');
-  }
+  if(live&&bjVal(BJ.d)<17){BJ.d.push(BJ.deck.draw());bjRender();setTimeout(play,650)}
+  else bjSettle();
  };
  setTimeout(play,650);
 }
-function bjDouble(){
- const ch=chips();if(BJ.p.length!==2||ch<BJ.stake)return;
- setChips(ch-BJ.stake);BJ.stake*=2;sfx('chip');
- BJ.p.push(bjDraw());
- if(bjVal(BJ.p)>21){BJ.hide=false;BJ.phase='dealer';bjRender();setTimeout(()=>bjFinish('bust'),500)}
- else bjStand();
-}
-$('#bjCtrl').addEventListener('click',e=>{
- if(e.target.closest('[data-openbank2]')){openBank('籌碼不足 '+BJ_MIN+'。');return}
- const ch=e.target.closest('[data-chip]');
- if(ch&&(BJ.phase==='bet'||BJ.phase==='done')){BJ.phase='bet';BJ.sel=Math.min(BJ.sel+ +ch.dataset.chip,chips(),BJ_MAX);sfx('chip');BJ.p=[];BJ.d=[];BJ.msg='';BJ.cls='';bjRender();return}
- const b=e.target.closest('[data-bj]');if(!b)return;
- const a=b.dataset.bj;
- if(BJ.phase==='bet'||BJ.phase==='done'){
-  if(a==='clear'){BJ.phase='bet';BJ.sel=0;BJ.p=[];BJ.d=[];BJ.msg='';BJ.cls='';bjRender()}
-  else if(a==='max'){BJ.phase='bet';BJ.sel=Math.min(chips(),BJ_MAX);bjRender()}
-  else if(a==='half'){BJ.phase='bet';BJ.sel=Math.max(0,Math.floor(BJ.sel/2));bjRender()}
-  else if(a==='deal'){BJ.phase='bet';bjDeal()}
- }else if(BJ.phase==='player'){
-  if(a==='hit')bjHit();else if(a==='stand')bjStand();else if(a==='double')bjDouble();
+function bjSettle(){
+ const dv=bjVal(BJ.d),dbj=BJ.d.length===2&&dv===21,only=BJ.hands.length===1&&!BJ.hands[0].split;
+ let ret=0,staked=0,w=0,l=0;
+ for(const h of BJ.hands){
+  staked+=h.bet;const v=bjVal(h.cards),pbj=only&&h.cards.length===2&&v===21;
+  if(pbj&&dbj){ret+=h.bet;h.tag='平手'}
+  else if(pbj){ret+=Math.floor(h.bet*2.5);h.tag='BLACKJACK';w++}
+  else if(dbj){h.tag='莊家 BJ';l++}
+  else if(v>21){h.tag='爆牌';l++}
+  else if(dv>21||v>dv){ret+=h.bet*2;h.tag='贏';w++}
+  else if(v===dv){ret+=h.bet;h.tag='平手'}
+  else{h.tag='輸';l++}
  }
-});
-$('#bjExit').addEventListener('click',()=>{
- if(BJ.phase==='player'){toast('這手還沒結束，先停牌或要牌');return}
- if(BJ.phase==='dealer')return;
- show('lobby');refreshStats();
-});
+ if(BJ.ins>0){staked+=BJ.ins;if(dbj)ret+=BJ.ins*3}
+ const net=ret-staked;if(ret)setChips(chips()+ret);
+ BJ.phase='done';BJ.hide=false;BJ.ai=-1;
+ BJ.msg=(net>0?'你贏了 ':net<0?'你輸了 ':'平手 ')+signed(net)+(BJ.ins>0&&dbj?'（保險賠付）':'');
+ BJ.cls=net>0?'win':net<0?'lose':'push';
+ if(net>0)sfx('bonus');else if(net<0)sfx('drain');
+ BJ.sel=BJ.last;clampSel(BJ);bjRender();
+}
+BJ.act=function(a){
+ if(betAct(BJ,a))return;
+ if(a==='deal'){bjDeal();return}
+ if(BJ.phase==='insurance'){
+  if(a==='ins'){const cost=Math.floor(BJ.hands[0].bet/2);if(chips()<cost)return;setChips(chips()-cost);BJ.ins=cost;sfx('chip')}
+  if(a==='ins'||a==='noins')bjPeek();
+  return;
+ }
+ if(BJ.phase!=='player')return;
+ const h=BJ.hands[BJ.ai],ch=chips();
+ if(a==='hit'){h.cards.push(BJ.deck.draw());if(bjVal(h.cards)>=21)h.done=true;bjAdvance()}
+ else if(a==='stand'){h.done=true;bjAdvance()}
+ else if(a==='double'){
+  if(h.cards.length!==2||ch<h.bet)return;
+  setChips(ch-h.bet);h.bet*=2;sfx('chip');h.cards.push(BJ.deck.draw());h.done=true;bjAdvance();
+ }else if(a==='split'){
+  if(h.cards.length!==2||bjCV(h.cards[0])!==bjCV(h.cards[1])||BJ.hands.length>=4||ch<h.bet)return;
+  setChips(ch-h.bet);sfx('chip');
+  const c2=h.cards.pop(),nh={cards:[c2],bet:h.bet,done:false,tag:'',split:true};
+  h.split=true;BJ.hands.splice(BJ.ai+1,0,nh);
+  h.cards.push(BJ.deck.draw());nh.cards.push(BJ.deck.draw());
+  const aces=c2.r==='A';
+  for(const x of [h,nh])if(aces||bjVal(x.cards)===21)x.done=true;
+  bjAdvance();
+ }
+};
+BJ.chip=v=>betChip(BJ,v);
+bindCtrl('bj',BJ);
+$('#bj-back').addEventListener('click',()=>backFrom(BJ));
+
+/* ---------- 賭場戰爭 ---------- */
+const WR={deck:new Deck(6),sel:25,min:5,max:5000,phase:'bet',p:[],d:[],ante:0,staked:0,msg:'',cls:''};
+WR.reset=()=>{WR.phase='bet';WR.p=[];WR.d=[];WR.msg='';WR.cls=''};
+WR.render=()=>wrRender();
+function wrOpen(){show('war');WR.reset();WR.msg='選擇押注，然後發牌';clampSel(WR);updateWallet();wrRender()}
+function wrRender(){
+ const sp=WR.p.length>1?' spread':'';
+ $('#war-felt').innerHTML=zone('莊家',WR.d.map(c=>cardHtml(c)).join(''),sp)+msgHtml(WR.msg,WR.cls)+zone('你',WR.p.map(c=>cardHtml(c)).join(''),sp);
+ const c=$('#war-ctrl');
+ if(WR.phase==='bet'||WR.phase==='done')c.innerHTML=betHtml(WR.sel,'押注',dealBtn(WR));
+ else if(WR.phase==='tie'){
+  const can=chips()>=WR.ante;
+  c.innerHTML='<div class="betline">平手！　加碼 <b>'+WR.ante.toLocaleString()+'</b> 決戰，或投降</div><div class="row"><button class="btn gold" data-a="war"'+(can?'':' disabled')+'>決戰 ⚔</button><button class="btn" data-a="surr">投降（退一半）</button></div>';
+ }else c.innerHTML='<div class="betline">開牌中⋯</div>';
+}
+function wrEnd(ret,msg){
+ if(ret)setChips(chips()+ret);
+ const net=ret-WR.staked;
+ WR.msg=msg+'　'+signed(net);WR.cls=net>0?'win':net<0?'lose':'push';
+ if(net>0)sfx('bonus');else if(net<0)sfx('drain');
+ WR.phase='done';WR.sel=WR.ante;clampSel(WR);wrRender();
+}
+WR.act=function(a){
+ if(betAct(WR,a))return;
+ if(a==='deal'){
+  const ch=chips();if(WR.sel<WR.min||WR.sel>ch)return;
+  WR.ante=WR.sel;WR.staked=WR.ante;setChips(ch-WR.ante);sfx('chip');
+  WR.p=[WR.deck.draw()];WR.d=[WR.deck.draw()];WR.msg='';WR.cls='';WR.phase='reveal';wrRender();
+  setTimeout(()=>{
+   const x=WR.p[0].v,y=WR.d[0].v;
+   if(x>y)wrEnd(WR.ante*2,'你的牌比較大');
+   else if(x<y)wrEnd(0,'莊家的牌比較大');
+   else{WR.phase='tie';WR.msg='平手！';wrRender()}
+  },500);
+ }else if(a==='surr'&&WR.phase==='tie'){wrEnd(Math.floor(WR.ante/2),'投降，退回一半')}
+ else if(a==='war'&&WR.phase==='tie'){
+  if(chips()<WR.ante)return;
+  setChips(chips()-WR.ante);WR.staked+=WR.ante;WR.phase='reveal';
+  for(let i=0;i<3;i++)WR.deck.draw(true);
+  WR.p.push(WR.deck.draw());WR.d.push(WR.deck.draw());WR.msg='決戰！';wrRender();
+  setTimeout(()=>{
+   const x=WR.p[1].v,y=WR.d[1].v;
+   if(x>y)wrEnd(WR.ante*3,'決戰勝利！');
+   else if(x===y)wrEnd(WR.ante*4,'決戰再平手，雙倍獎勵！');
+   else wrEnd(0,'決戰失敗');
+  },700);
+ }
+};
+WR.chip=v=>betChip(WR,v);
+bindCtrl('war',WR);
+$('#war-back').addEventListener('click',()=>backFrom(WR));
+
+/* ---------- 三張牌撲克 ---------- */
+const TC_NAMES=['高牌','一對','同花','順子','三條','同花順'];
+const TC={deck:new Deck(1),sel:25,pp:0,min:5,max:2000,phase:'bet',p:[],d:[],ante:0,ppb:0,hideD:true,msg:'',cls:''};
+TC.reset=()=>{TC.phase='bet';TC.p=[];TC.d=[];TC.msg='';TC.cls='';TC.hideD=true};
+TC.render=()=>tcRender();
+function tcEval(cs){
+ const rs=cs.map(c=>c.v).sort((a,b)=>b-a),flush=cs.every(c=>c.s===cs[0].s);
+ const st=new Set(rs).size===3&&(rs[0]-rs[2]===2||(rs[0]===14&&rs[1]===3&&rs[2]===2));
+ const hi=(rs[0]===14&&rs[1]===3)?3:rs[0];
+ if(st&&flush)return[5,hi];
+ if(rs[0]===rs[2])return[4,rs[0]];
+ if(st)return[3,hi];
+ if(flush)return[2,...rs];
+ if(rs[0]===rs[1])return[1,rs[0],rs[2]];
+ if(rs[1]===rs[2])return[1,rs[1],rs[0]];
+ return[0,...rs];
+}
+function tcOpen(){show('tcp');TC.reset();TC.msg='選擇 Ante，然後發牌';clampSel(TC);if(TC.pp>chips())TC.pp=0;updateWallet();tcRender()}
+function tcRender(){
+ const pn=TC.p.length?TC_NAMES[tcEval(TC.p)[0]]:'';
+ $('#tcp-felt').innerHTML=zone('莊家',TC.d.map(c=>cardHtml(c,TC.hideD)).join(''))+msgHtml(TC.msg,TC.cls)+zone('你 <b>'+pn+'</b>',TC.p.map(c=>cardHtml(c)).join(''));
+ const c=$('#tcp-ctrl'),ch=chips();
+ if(TC.phase==='bet'||TC.phase==='done'){
+  const mid='<div class="row" style="align-items:center"><span class="mini">Pair Plus（選填）<b style="color:var(--gold)">'+TC.pp+'</b></span><button class="btn" data-a="pp5">+5</button><button class="btn" data-a="pp25">+25</button><button class="btn" data-a="ppeq">=Ante</button><button class="btn" data-a="pp0">清除</button></div>';
+  const cost=TC.sel+TC.pp;
+  c.innerHTML=betHtml(TC.sel,'Ante',ch<TC.min?'<button class="btn gold" data-a="bank">🏦 去借錢</button>':'<button class="btn gold" data-a="deal"'+((TC.sel<TC.min||cost>ch)?' disabled':'')+'>發牌 ▶</button>',mid);
+ }else if(TC.phase==='decide'){
+  c.innerHTML='<div class="betline">加注 Play <b>'+TC.ante.toLocaleString()+'</b>，或棄牌</div><div class="row"><button class="btn gold" data-a="play"'+(ch>=TC.ante?'':' disabled')+'>Play 跟注</button><button class="btn" data-a="fold">棄牌</button></div>';
+ }else c.innerHTML='<div class="betline">開牌中⋯</div>';
+}
+function tcResolve(play){
+ const pe=tcEval(TC.p),de=tcEval(TC.d);TC.hideD=false;
+ let ret=0,staked=TC.ante+TC.ppb,parts=[];
+ if(TC.ppb>0){
+  if(pe[0]>=1){const o=[0,1,4,6,30,40][pe[0]];ret+=TC.ppb*(1+o);parts.push('Pair Plus +'+TC.ppb*o)}
+  else parts.push('Pair Plus 未中')
+ }
+ if(!play){parts.unshift('棄牌，Ante 輸掉')}
+ else{
+  setChips(chips()-TC.ante);staked+=TC.ante;
+  const bonus=[0,0,0,1,4,5][pe[0]];if(bonus){ret+=TC.ante*bonus;parts.push('Ante 獎勵 +'+TC.ante*bonus)}
+  const qual=de[0]>0||de[1]>=12;
+  if(!qual){ret+=TC.ante*3;parts.unshift('莊家不合格（沒有 Q 以上）')}
+  else{
+   const c=cmpArr(pe,de);
+   if(c>0){ret+=TC.ante*4;parts.unshift('你的'+TC_NAMES[pe[0]]+'贏了莊家的'+TC_NAMES[de[0]])}
+   else if(c<0)parts.unshift('莊家的'+TC_NAMES[de[0]]+'贏了你的'+TC_NAMES[pe[0]]);
+   else{ret+=TC.ante*2;parts.unshift('平手')}
+  }
+ }
+ if(ret)setChips(chips()+ret);
+ const net=ret-staked;
+ TC.msg=parts.join('，')+'　'+signed(net);TC.cls=net>0?'win':net<0?'lose':'push';
+ if(net>0)sfx('bonus');else if(net<0)sfx('drain');
+ TC.phase='done';clampSel(TC);if(TC.pp>chips()-TC.sel)TC.pp=Math.max(0,chips()-TC.sel);tcRender();
+}
+TC.act=function(a){
+ if(a==='pp5'||a==='pp25'||a==='ppeq'||a==='pp0'){
+  const add=a==='pp5'?5:a==='pp25'?25:0;
+  if(TC.phase!=='bet'){TC.reset()}
+  TC.pp=a==='pp0'?0:a==='ppeq'?TC.sel:TC.pp+add;
+  TC.pp=Math.max(0,Math.min(TC.pp,chips()-TC.sel,5000));tcRender();return;
+ }
+ if(betAct(TC,a))return;
+ if(a==='deal'){
+  const ch=chips();if(TC.sel<TC.min||TC.sel+TC.pp>ch)return;
+  TC.ante=TC.sel;TC.ppb=TC.pp;setChips(ch-TC.ante-TC.ppb);sfx('chip');
+  TC.deck=new Deck(1);TC.p=[TC.deck.draw(),TC.deck.draw(),TC.deck.draw()];TC.d=[TC.deck.draw(),TC.deck.draw(),TC.deck.draw()];
+  TC.hideD=true;TC.msg='看看你的牌：要跟注嗎？';TC.cls='';TC.phase='decide';tcRender();
+ }else if(TC.phase==='decide'){
+  if(a==='play'){if(chips()<TC.ante)return;tcResolve(true)}
+  else if(a==='fold')tcResolve(false);
+ }
+};
+TC.chip=v=>betChip(TC,v);
+bindCtrl('tcp',TC);
+$('#tcp-back').addEventListener('click',()=>backFrom(TC));
+
+/* ---------- 德州撲克（對電腦，一對一固定限注）---------- */
+const HD_NAMES=['高牌','一對','兩對','三條','順子','同花','葫蘆','四條','同花順'];
+const STREETS=['翻牌前','翻牌','轉牌','河牌'];
+const CAP=3;
+function eval5(c){
+ const rs=c.map(x=>x.v).sort((a,b)=>b-a),flush=c.every(x=>x.s===c[0].s);
+ let sh=0;
+ if(new Set(rs).size===5){if(rs[0]-rs[4]===4)sh=rs[0];else if(rs.join()==='14,5,4,3,2')sh=5}
+ const cnt={};rs.forEach(v=>cnt[v]=(cnt[v]||0)+1);
+ const g=Object.keys(cnt).map(k=>[+k,cnt[k]]).sort((a,b)=>b[1]-a[1]||b[0]-a[0]);
+ if(sh&&flush)return[8,sh];
+ if(g[0][1]===4)return[7,g[0][0],g[1][0]];
+ if(g[0][1]===3&&g[1][1]===2)return[6,g[0][0],g[1][0]];
+ if(flush)return[5,...rs];
+ if(sh)return[4,sh];
+ if(g[0][1]===3)return[3,g[0][0],g[1][0],g[2][0]];
+ if(g[0][1]===2&&g[1][1]===2)return[2,g[0][0],g[1][0],g[2][0]];
+ if(g[0][1]===2)return[1,g[0][0],g[1][0],g[2][0],g[3][0]];
+ return[0,...rs];
+}
+function best7(cs){
+ const n=cs.length;if(n<5)return null;let best=null;
+ (function rec(st,pick){
+  if(pick.length===5){const e=eval5(pick.map(i=>cs[i]));if(!best||cmpArr(e,best)>0)best=e;return}
+  for(let i=st;i<n;i++){pick.push(i);rec(i+1,pick);pick.pop()}
+ })(0,[]);
+ return best;
+}
+function equity(hole,board,N){
+ const used=new Set(hole.concat(board).map(c=>c.r+c.s)),rest=[];
+ for(const s of ['♠','♥','♦','♣'])for(const r of RANKS)if(!used.has(r+s))rest.push({r,s,v:rv(r)});
+ const need=5-board.length,m=2+need;let w=0;
+ for(let t=0;t<N;t++){
+  for(let i=0;i<m;i++){const j=i+Math.floor(Math.random()*(rest.length-i));[rest[i],rest[j]]=[rest[j],rest[i]]}
+  const bd=board.concat(rest.slice(2,m));
+  const c=cmpArr(best7(hole.concat(bd)),best7([rest[0],rest[1]].concat(bd)));
+  w+=c>0?1:c===0?.5:0;
+ }
+ return w/N;
+}
+const HD={deck:null,sel:25,min:5,max:500,bet:25,phase:'bet',street:0,board:[],ph:[],ah:[],pot:0,pc:0,sp:0,sa:0,raises:0,acted:{p:false,a:false},turn:'p',first:'a',allin:false,showA:false,tok:0,msg:'',cls:''};
+HD.reset=()=>{HD.tok++;HD.phase='bet';HD.board=[];HD.ph=[];HD.ah=[];HD.msg='';HD.cls='';HD.showA=false;HD.pot=0};
+HD.cancel=()=>{HD.tok++};
+HD.render=()=>hdRender();
+function hdUnit(){return HD.street<2?HD.bet:HD.bet*2}
+function hdOpen(){show('hold');HD.reset();HD.msg='選擇底注，然後發牌';clampSel(HD);updateWallet();hdRender()}
+function hdRender(){
+ const slots=[];for(let i=0;i<5;i++)slots.push(HD.board[i]?cardHtml(HD.board[i]):'<div class="pc slot"></div>');
+ let pn='';if(HD.ph.length&&HD.board.length>=3){const e=best7(HD.ph.concat(HD.board));pn=HD_NAMES[e[0]]}
+ let an='';if(HD.showA&&HD.ah.length&&HD.board.length>=3){an=HD_NAMES[best7(HD.ah.concat(HD.board))[0]]}
+ const pot=HD.phase==='bet'?'':'底池 ⚡'+HD.pot.toLocaleString()+'　'+STREETS[HD.street]+'　本輪單位 '+hdUnit();
+ $('#hold-felt').innerHTML=zone('電腦 <b>'+an+'</b>',HD.ah.map(c=>cardHtml(c,!HD.showA)).join(''))+
+  '<div class="center"><div class="potl">'+pot+'</div><div class="hand spread">'+slots.join('')+'</div>'+msgHtml(HD.msg,HD.cls)+'</div>'+
+  zone('你 <b>'+pn+'</b>',HD.ph.map(c=>cardHtml(c)).join(''));
+ const c=$('#hold-ctrl'),ch=chips();
+ if(HD.phase==='bet'||HD.phase==='done'){
+  c.innerHTML=betHtml(HD.sel,'底注',dealBtn(HD),'<div class="mini">雙方各付底注。最多約要準備底注的 19 倍（超過的下注會被禁用）</div>');
+ }else if(HD.phase==='play'){
+  if(HD.turn!=='p'){c.innerHTML='<div class="betline">電腦思考中⋯</div>';return}
+  const need=HD.sa-HD.sp,u=hdUnit(),tot=need+u;
+  const callTxt=need===0?'過牌':(ch<need?'跟注（全下 '+ch+'）':'跟注 '+need);
+  const canR=HD.raises<CAP&&ch>=tot;
+  c.innerHTML='<div class="betline">你已投入 <b>'+HD.pc.toLocaleString()+'</b></div><div class="row"><button class="btn" data-a="fold">棄牌</button><button class="btn pri" data-a="call">'+callTxt+'</button><button class="btn gold" data-a="raise"'+(canR?'':' disabled')+'>'+(need===0?'下注 ':'加注 ')+tot+'</button></div>';
+ }
+}
+HD.act=function(a){
+ if(betAct(HD,a))return;
+ if(a==='deal'){hdDeal();return}
+ if(HD.phase!=='play'||HD.turn!=='p')return;
+ const need=HD.sa-HD.sp,u=hdUnit();
+ if(a==='fold'){hdEnd('a','你棄牌了');return}
+ if(a==='call'){
+  if(need>0){
+   const amt=Math.min(need,chips());hdPay('p',amt);
+   if(amt<need){const ref=need-amt;HD.sa-=ref;HD.pot-=ref;HD.allin=true}
+   HD.log='你跟注';
+  }else HD.log='你過牌';
+  HD.acted.p=true;
+ }else if(a==='raise'){
+  const tot=need+u;if(HD.raises>=CAP||chips()<tot)return;
+  hdPay('p',tot);HD.raises++;HD.acted.p=true;HD.acted.a=false;HD.log=need===0?'你下注':'你加注';
+ }else return;
+ hdAfter('p');
+};
+HD.chip=v=>betChip(HD,v);
+function hdPay(who,amt){if(who==='p'){setChips(chips()-amt);HD.pc+=amt;HD.sp+=amt}else HD.sa+=amt;HD.pot+=amt}
+function hdDeal(){
+ const ch=chips();if(HD.sel<HD.min||HD.sel>ch)return;
+ HD.bet=HD.sel;setChips(ch-HD.bet);sfx('chip');HD.pc=HD.bet;HD.pot=HD.bet*2;
+ HD.deck=new Deck(1);HD.ph=[HD.deck.draw(),HD.deck.draw()];HD.ah=[HD.deck.draw(true),HD.deck.draw(true)];
+ HD.board=[];HD.street=0;HD.showA=false;HD.allin=false;HD.msg='';HD.cls='';HD.log='';
+ HD.first=HD.first==='p'?'a':'p';HD.phase='play';hdStreet();
+}
+function hdStreet(){
+ HD.sp=0;HD.sa=0;HD.raises=0;HD.acted={p:false,a:false};HD.turn=HD.first;
+ HD.msg=HD.first==='p'?'輪到你':'電腦先行動';hdRender();
+ if(HD.turn==='a')hdAI();
+}
+function hdAfter(who){
+ if(HD.allin){hdRunout();return}
+ if(HD.acted.p&&HD.acted.a&&HD.sp===HD.sa){hdNext();return}
+ HD.turn=who==='p'?'a':'p';HD.msg=HD.log;hdRender();
+ if(HD.turn==='a')hdAI();
+}
+function hdNext(){
+ if(HD.street===3){hdShowdown();return}
+ HD.street++;
+ const n=HD.street===1?3:1;for(let i=0;i<n;i++)HD.board.push(HD.deck.draw());
+ hdStreet();
+}
+function hdRunout(){while(HD.board.length<5)HD.board.push(HD.deck.draw());HD.street=3;hdShowdown()}
+function hdShowdown(){
+ HD.showA=true;
+ const a=best7(HD.ah.concat(HD.board)),p=best7(HD.ph.concat(HD.board)),c=cmpArr(p,a),pn=HD_NAMES[p[0]],an=HD_NAMES[a[0]];
+ if(c>0)hdEnd('p','你的'+pn+'勝過電腦的'+an);
+ else if(c<0)hdEnd('a','電腦的'+an+'勝過你的'+pn);
+ else hdEnd(null,'平手（都是'+pn+'）',true);
+}
+function hdEnd(winner,why,tie){
+ HD.phase='done';HD.tok++;
+ const ret=tie?Math.floor(HD.pot/2):(winner==='p'?HD.pot:0);
+ if(ret)setChips(chips()+ret);
+ const net=ret-HD.pc;
+ HD.msg=why+'　'+signed(net);HD.cls=net>0?'win':net<0?'lose':'push';
+ if(net>0)sfx('bonus');else if(net<0)sfx('drain');
+ HD.sel=HD.bet;clampSel(HD);hdRender();
+}
+function hdAI(){
+ const tok=++HD.tok;HD.msg='電腦思考中⋯';hdRender();
+ setTimeout(()=>{
+  if(tok!==HD.tok||HD.phase!=='play')return;
+  const need=HD.sp-HD.sa,u=hdUnit(),e=equity(HD.ah,HD.board,350),r=Math.random();let act;
+  if(need===0){
+   act=(HD.raises<CAP&&((e>.62&&r<.8)||(e>.45&&r<.2)||(e<.4&&r<.1)))?'raise':'check';
+  }else{
+   const odds=need/(HD.pot+need);
+   if(e>.78&&HD.raises<CAP&&r<.6)act='raise';
+   else if(e>=odds+.04||r<.08)act='call';
+   else act='fold';
+  }
+  if(act==='fold'){hdEnd('p','電腦棄牌了');return}
+  if(act==='call'){hdPay('a',need);HD.log='電腦跟注 '+need}
+  else if(act==='check'){HD.log='電腦過牌'}
+  else{hdPay('a',need+u);HD.raises++;HD.acted.p=false;HD.log=need===0?'電腦下注 '+u:'電腦加注到 '+(need+u)}
+  HD.acted.a=true;
+  hdAfter('a');
+ },700+Math.random()*500);
+}
+bindCtrl('hold',HD);
+$('#hold-back').addEventListener('click',()=>backFrom(HD));
 
 /* ---------- 大廳背景 ---------- */
 (function(){
