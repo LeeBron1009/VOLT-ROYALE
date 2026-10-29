@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>VOLT ROYALE</title>
+<style>
+:root{--c1:#00f0ff;--c2:#ff2bd6;--gold:#ffd166;--gold2:#ff9f1c;--bg:#05060d;--amber:#ffb000}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:#e8f4ff;font-family:system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif;overflow:hidden;overscroll-behavior:none}
+button{font:inherit;cursor:pointer}
+button:disabled{opacity:.4;cursor:not-allowed}
+#bg{position:fixed;inset:0;width:100%;height:100%;z-index:0}
+#lobby{position:fixed;inset:0;overflow-y:auto;z-index:1;padding:0 18px 40px}
+.wrap{max-width:1040px;margin:0 auto}
+.wbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;padding:max(10px,env(safe-area-inset-top)) 12px 10px;margin:0 -18px;background:rgba(5,6,13,.85);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,209,102,.35)}
+.wchip{padding:7px 14px;border-radius:999px;border:1px solid rgba(255,209,102,.5);background:rgba(255,209,102,.08);font-size:13px;white-space:nowrap}
+.wchip b{color:var(--gold);font-size:16px;margin-left:5px;font-variant-numeric:tabular-nums}
+.wchip.debt b{color:#ff6b81}
+.bankbtn{border:1px solid var(--c1);background:rgba(0,240,255,.12);color:#fff;border-radius:999px;padding:7px 16px;font-weight:700;font-size:13px}
+.bankbtn:hover{background:rgba(0,240,255,.3)}
+header{text-align:center;padding:26px 0 6px}
+.bulbs{height:8px;margin:0 auto 16px;max-width:520px;border-radius:99px;background:repeating-linear-gradient(90deg,var(--gold) 0 8px,transparent 8px 22px);background-size:44px 100%;animation:bulb 1.2s linear infinite;filter:drop-shadow(0 0 6px var(--gold))}
+@keyframes bulb{to{background-position:44px 0}}
+.logo{font-size:clamp(36px,9vw,72px);font-weight:900;letter-spacing:.1em;background:linear-gradient(90deg,var(--gold),#fff 45%,var(--c1));-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 18px rgba(255,209,102,.4))}
+.sub{opacity:.75;letter-spacing:.35em;font-size:13px;margin-top:4px}
+.sec{margin:28px 0 12px;font-size:14px;letter-spacing:.3em;color:var(--gold);display:flex;align-items:center;gap:12px}
+.sec::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,rgba(255,209,102,.5),transparent)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:20px}
+.card{position:relative;border-radius:20px;padding:20px;background:rgba(12,16,34,.7);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);transition:.25s;overflow:hidden;display:flex;flex-direction:column;gap:10px}
+.card:hover{transform:translateY(-6px)}
+.card h2{margin:0;font-size:22px;letter-spacing:.05em}
+.card .en{font-size:11px;opacity:.65;letter-spacing:.25em}
+.card p{margin:0;font-size:13.5px;line-height:1.7;opacity:.88}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tags span{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid currentColor;opacity:.85}
+.price{display:flex;gap:8px;flex-wrap:wrap}
+.price span{font-size:12px;padding:4px 10px;border-radius:8px;background:rgba(255,209,102,.12);border:1px solid rgba(255,209,102,.5);color:var(--gold);font-weight:700}
+.art{height:130px;border-radius:14px;position:relative;overflow:hidden}
+.best{font-size:13px;opacity:.9}
+.play{margin-top:auto;border:0;border-radius:14px;padding:13px;font-weight:800;font-size:16px;letter-spacing:.1em;color:#001018}
+.modern{border-color:rgba(0,240,255,.45);box-shadow:0 0 30px rgba(0,240,255,.12)}
+.modern:hover{box-shadow:0 0 40px rgba(0,240,255,.35)}
+.modern .tags{color:var(--c1)}
+.modern .art{background:radial-gradient(circle at 50% 50%,#10224a,#060916)}
+.modern .art i{position:absolute;left:50%;top:50%;border-radius:50%;border:2px solid var(--c1);transform:translate(-50%,-50%);box-shadow:0 0 14px var(--c1);animation:pulse 3s infinite}
+.modern .art i:nth-child(1){width:36px;height:36px;border-color:var(--c2);box-shadow:0 0 14px var(--c2)}
+.modern .art i:nth-child(2){width:80px;height:80px;animation-delay:.6s}
+.modern .art i:nth-child(3){width:124px;height:124px;animation-delay:1.2s}
+.modern .art em{position:absolute;width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 0 14px #fff,0 0 30px var(--c1);animation:orbit 3.2s linear infinite;left:50%;top:50%}
+@keyframes pulse{0%,100%{opacity:.9;transform:translate(-50%,-50%) scale(1)}50%{opacity:.3;transform:translate(-50%,-50%) scale(1.12)}}
+@keyframes orbit{from{transform:rotate(0) translateX(50px)}to{transform:rotate(360deg) translateX(50px)}}
+.modern .play{background:linear-gradient(90deg,var(--c1),#5b8cff)}
+.retro{border:3px solid var(--amber);border-radius:6px;background:#0b0804;font-family:"Courier New",monospace;box-shadow:6px 6px 0 #6b3c00}
+.retro:hover{box-shadow:10px 10px 0 #6b3c00}
+.retro h2,.retro .best{color:var(--amber);text-shadow:0 0 8px rgba(255,176,0,.6)}
+.retro .tags{color:#ffd166}.retro .tags span{border-radius:0}
+.retro .art{border-radius:0;background:#000;border:2px solid #5a3a00;background-image:repeating-linear-gradient(0deg,rgba(255,176,0,.08) 0 2px,transparent 2px 4px)}
+.retro .art i{position:absolute;width:28px;height:28px;background:#ff3030;border:4px solid #ffee00;border-radius:50%}
+.retro .art i:nth-child(1){left:25%;top:25%}.retro .art i:nth-child(2){left:62%;top:20%}.retro .art i:nth-child(3){left:44%;top:55%}
+.retro .art em{position:absolute;width:12px;height:12px;background:#fff;animation:bounce 1.6s steps(8) infinite;left:48%}
+@keyframes bounce{0%{top:0}50%{top:105px}100%{top:0}}
+.retro .play{background:var(--amber);border-radius:0;font-family:inherit;box-shadow:4px 4px 0 #6b3c00}
+.bjc{border-color:rgba(255,209,102,.55);box-shadow:0 0 30px rgba(255,209,102,.12)}
+.bjc:hover{box-shadow:0 0 40px rgba(255,209,102,.35)}
+.bjc .tags{color:var(--gold)}
+.bjc .art{background:radial-gradient(ellipse at 50% 120%,#0d5a55,#06201f);display:flex;align-items:center;justify-content:center;gap:0}
+.bjc .art b{width:60px;height:86px;background:#fff;border-radius:8px;color:#111;font-size:26px;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 16px rgba(0,0,0,.5);margin:0 -8px}
+.bjc .art b:nth-child(1){transform:rotate(-12deg)}.bjc .art b:nth-child(2){transform:rotate(8deg) translateY(-4px);color:#d22}
+.bjc .play{background:linear-gradient(90deg,var(--gold),var(--gold2))}
+.soon{opacity:.55;border-style:dashed}
+.soon .play{background:#2a3350;color:#9aa6c8;cursor:not-allowed}
+.soon .art{background:repeating-linear-gradient(45deg,#101830 0 10px,#0c1226 10px 20px);display:grid;place-items:center;font-size:44px;color:#2c3a66;letter-spacing:.1em}
+.info{margin-top:10px;padding:18px;border-radius:18px;background:rgba(12,16,34,.65);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(8px);font-size:13.5px;line-height:1.9;overflow-x:auto}
+.info h3{margin:0 0 6px;color:var(--c1);letter-spacing:.1em;font-size:15px}
+.info kbd{background:#1b2547;border:1px solid #3a4a80;border-radius:6px;padding:1px 7px;font-size:12px}
+table{border-collapse:collapse;width:100%;min-width:520px}
+th,td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.1);text-align:left;font-size:13px}
+th{color:var(--gold);letter-spacing:.1em}
+.fine{opacity:.6;font-size:12px;margin-top:10px}
+#game,#bj{position:fixed;inset:0;z-index:5;display:none;flex-direction:column;background:#05070f}
+#hud,.bjbar{display:flex;align-items:center;gap:10px;padding:max(8px,env(safe-area-inset-top)) 12px 8px;background:rgba(10,14,30,.92);border-bottom:1px solid rgba(255,209,102,.35)}
+#hud .sc{flex:1;min-width:0}
+#hScore{font-size:clamp(22px,6vw,34px);font-weight:900;font-variant-numeric:tabular-nums;color:var(--c1);text-shadow:0 0 12px rgba(0,240,255,.6);line-height:1}
+#hSub{font-size:12px;opacity:.8;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hCombo{color:var(--c2);font-weight:800}
+.ib{width:38px;height:38px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.07);color:#fff;font-size:17px;flex:none}
+#stage{position:relative;flex:1;display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+#cv{display:block;touch-action:none;border-radius:10px}
+#warpWrap{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:3;width:min(210px,50vw)}
+#warpBtn{width:100%;border:1px solid var(--c1);background:rgba(0,20,40,.8);color:#fff;border-radius:12px;padding:0;overflow:hidden;position:relative;height:38px;font-weight:800;letter-spacing:.1em;font-size:13px}
+#warpFill{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,#0a6cff,var(--c1));opacity:.8}
+#warpBtn span{position:relative}
+#warpBtn.ready{animation:glow 1s infinite;border-color:#fff}
+@keyframes glow{50%{box-shadow:0 0 20px var(--c1)}}
+#ov{position:absolute;inset:0;z-index:10;display:none;align-items:center;justify-content:center;background:rgba(3,6,16,.78);backdrop-filter:blur(6px);padding:16px}
+.panel{max-width:520px;width:100%;max-height:100%;overflow-y:auto;text-align:center;padding:24px;border-radius:20px;background:rgba(14,20,44,.95);border:1px solid rgba(255,209,102,.5);box-shadow:0 0 40px rgba(255,209,102,.15)}
+.panel h2{margin:0 0 8px;font-size:26px;letter-spacing:.08em}
+.panel .big{font-size:40px;font-weight:900;color:var(--gold);margin:6px 0}
+.panel .win{color:#4dffa6}.panel .lose{color:#ff6b81}
+.btns{display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap}
+.btn{padding:12px 20px;border-radius:12px;border:1px solid var(--c1);background:rgba(0,240,255,.12);color:#fff;font-weight:800}
+.btn.pri{background:var(--c1);color:#001018}
+.btn.gold{background:linear-gradient(90deg,var(--gold),var(--gold2));color:#2a1800;border-color:var(--gold)}
+.ups{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+.up{padding:14px 8px;border-radius:14px;border:1px solid var(--c2);background:rgba(255,43,214,.1);color:#fff;text-align:center}
+.up:hover{background:rgba(255,43,214,.3)}
+.up b{display:block;font-size:30px}.up strong{display:block;margin:4px 0;font-size:15px}.up small{opacity:.8;font-size:12px;line-height:1.4;display:block}
+@media(max-width:520px){.ups{grid-template-columns:1fr}.up{display:flex;gap:10px;align-items:center;text-align:left}.up b{font-size:26px}}
+#game.m-retro{background:#000;font-family:"Courier New",monospace}
+#game.m-retro #hud{background:#0b0804;border-bottom:3px solid var(--amber)}
+#game.m-retro #hScore{color:var(--amber);text-shadow:0 0 10px rgba(255,176,0,.8);letter-spacing:.08em}
+#game.m-retro #hCombo{color:#ff6040}
+#game.m-retro .ib{border-radius:0;border-color:var(--amber);color:var(--amber);background:#000}
+#game.m-retro #cv{image-rendering:pixelated;border-radius:0;border:3px solid #5a3a00}
+#game.m-retro #warpWrap{display:none}
+#game.m-retro #stage::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:4;background:repeating-linear-gradient(0deg,rgba(0,0,0,.25) 0 1px,transparent 1px 3px);box-shadow:inset 0 0 90px rgba(0,0,0,.7)}
+#game.m-retro .panel{border:3px solid var(--amber);border-radius:0;background:#0b0804;box-shadow:6px 6px 0 #6b3c00}
+#game.m-retro .panel .big,#game.m-retro .panel h2{color:var(--amber)}
+#game.m-retro .btn{border-radius:0;border-color:var(--amber);background:#000;color:var(--amber)}
+#game.m-retro .btn.pri,#game.m-retro .btn.gold{background:var(--amber);color:#000}
+/* modal / bank / bet */
+#modal{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;background:rgba(2,4,12,.82);backdrop-filter:blur(8px);padding:16px}
+.rows{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.rows div{padding:10px;border-radius:10px;background:rgba(255,255,255,.06);font-size:13px}
+.rows b{display:block;font-size:20px;color:var(--gold)}
+.note{padding:8px 12px;border-radius:10px;background:rgba(255,107,129,.15);border:1px solid #ff6b81;font-size:13px;margin:8px 0}
+.hint{font-size:12.5px;opacity:.75;line-height:1.6;margin-top:6px}
+input[type=range]{width:100%;accent-color:var(--gold);margin:10px 0}
+.pre{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.pre button{padding:8px 14px;border-radius:999px;border:1px solid var(--gold);background:rgba(255,209,102,.1);color:var(--gold);font-weight:700}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(80px);z-index:90;padding:10px 20px;border-radius:12px;background:rgba(20,26,50,.95);border:1px solid var(--gold);transition:.3s;pointer-events:none;font-weight:700}
+#toast.show{transform:translateX(-50%) translateY(0)}
+/* blackjack */
+.bjbar{justify-content:space-between}
+.bjbar .t{font-weight:900;letter-spacing:.2em;color:var(--gold)}
+.felt{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-around;align-items:center;padding:12px;background:radial-gradient(ellipse at 50% 40%,#0f6b62 0%,#08403c 55%,#04201f 100%);position:relative;overflow:hidden}
+.felt::before{content:"";position:absolute;inset:10px;border:2px solid rgba(255,209,102,.4);border-radius:26px;pointer-events:none;box-shadow:inset 0 0 40px rgba(0,0,0,.4)}
+.felt::after{content:"BLACKJACK PAYS 3 TO 2";position:absolute;top:50%;left:0;right:0;text-align:center;letter-spacing:.3em;font-size:12px;color:rgba(255,209,102,.35);transform:translateY(-50%);pointer-events:none}
+.zone{text-align:center;z-index:1}
+.lbl{font-size:13px;letter-spacing:.15em;opacity:.9;margin-bottom:8px}
+.lbl b{color:var(--gold);margin-left:6px}
+.hand{display:flex;justify-content:center;min-height:92px;padding-left:30px}
+.pc{width:clamp(48px,14vw,64px);aspect-ratio:5/7;margin-left:-28px;border-radius:9px;background:#fdfdfd;color:#15151f;position:relative;box-shadow:0 4px 12px rgba(0,0,0,.5);font-weight:800}
+.pc .r{position:absolute;top:4px;left:6px;font-size:clamp(13px,3.6vw,17px);line-height:1}
+.pc .r.b{top:auto;left:auto;bottom:4px;right:6px;transform:rotate(180deg)}
+.pc .s{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:clamp(22px,6vw,30px)}
+.pc.red{color:#d81b3c}
+.pc.back{background:repeating-linear-gradient(45deg,#0b2a66 0 6px,#102f78 6px 12px);border:3px solid #fdfdfd}
+.pc.back::after{content:"V";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--gold);font-size:22px;font-weight:900}
+.pc.deal{animation:deal .35s ease-out}
+@keyframes deal{from{transform:translate(60px,-80px) rotate(30deg) scale(.7);opacity:0}to{transform:none;opacity:1}}
+#bjMsg{z-index:1;min-height:44px;text-align:center;font-size:clamp(18px,5vw,26px);font-weight:900;letter-spacing:.06em;text-shadow:0 2px 10px #000}
+#bjMsg.win{color:#4dffa6}#bjMsg.lose{color:#ff8fa1}#bjMsg.push{color:var(--gold)}
+.ctrl{padding:12px 12px max(14px,env(safe-area-inset-bottom));background:rgba(8,10,22,.95);border-top:1px solid rgba(255,209,102,.35);display:flex;flex-direction:column;gap:10px;align-items:center}
+.chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.chp{width:56px;height:56px;border-radius:50%;border:4px dashed rgba(255,255,255,.8);color:#fff;font-weight:900;font-size:14px;box-shadow:0 4px 10px rgba(0,0,0,.5),inset 0 0 0 3px rgba(0,0,0,.25)}
+.chp.c5{background:#c0392b}.chp.c25{background:#1e8449}.chp.c100{background:#222}.chp.c500{background:#6c3483}
+.chp:active{transform:scale(.92)}
+.betline{font-size:15px}.betline b{color:var(--gold);font-size:22px}
+.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<div id="lobby"><div class="wrap">
+<div class="wbar">
+<div class="wchip">⚡ 籌碼<b class="w-chips">0</b></div>
+<div class="wchip debt">債務<b class="w-debt">0</b></div>
+<div class="wchip">淨資產<b class="w-net">0</b></div>
+<button class="bankbtn" data-openbank>🏦 伏特銀行</button>
+</div>
+<header><div class="bulbs"></div><div class="logo">VOLT ROYALE</div><div class="sub">伏 特 皇 家 娛 樂 城</div></header>
+
+<div class="sec">GAME FLOOR 遊戲大廳</div>
+<div class="cards">
+<div class="card modern">
+<div class="art"><i></i><i></i><i></i><em></em></div>
+<div class="en">PINBALL · MODERN</div>
+<h2>霓虹裂隙 NEON RIFT</h2>
+<p>重力井、傳送門、時間減速、升級卡。分數越高，拿回的籌碼越多。</p>
+<div class="tags"><span>重力井</span><span>傳送門</span><span>升級卡</span><span>連擊</span></div>
+<div class="price"><span>開局 10 ~ 2,000</span><span>最高 8 倍</span></div>
+<div class="best">最高分：<b id="cBestM">0</b></div>
+<button class="play" data-start="modern">投幣開始 ▶</button>
+</div>
+<div class="card retro">
+<div class="art"><i></i><i></i><i></i><em></em></div>
+<div class="en">PINBALL · RETRO</div>
+<h2>復古 '82 RETRO</h2>
+<p>像素畫面、方波音效、掃描線。彈力塊、滾動道和彈出碟，純技術的老派手感。</p>
+<div class="tags"><span>像素</span><span>8-bit</span><span>CRT</span></div>
+<div class="price"><span>開局 10 ~ 2,000</span><span>最高 8 倍</span></div>
+<div class="best">最高分：<b id="cBestR">0</b></div>
+<button class="play" data-start="retro">INSERT COIN ▶</button>
+</div>
+<div class="card bjc">
+<div class="art"><b>A♠</b><b>K♥</b></div>
+<div class="en">TABLE · CARDS</div>
+<h2>二十一點 BLACKJACK</h2>
+<p>比莊家更接近 21 點。Blackjack 賠 3:2，可以雙倍下注。想押多少自己決定。</p>
+<div class="tags"><span>要牌</span><span>停牌</span><span>雙倍</span><span>3:2</span></div>
+<div class="price"><span>每手 5 ~ 5,000</span><span>BJ 賠 3:2</span></div>
+<div class="best">莊家 17 點停牌，4 副牌</div>
+<button class="play" data-start="bj">入座 ▶</button>
+</div>
+<div class="card soon">
+<div class="art">♠ ♥ ♦ ♣</div>
+<div class="en">COMING SOON</div>
+<h2>更多撲克遊戲</h2>
+<p>視訊撲克、百家樂⋯⋯製作中。</p>
+<button class="play" disabled>LOCKED</button>
+</div>
+</div>
+
+<div class="sec">PRICE LIST 價目與賠率</div>
+<div class="info">
+<table>
+<tr><th>機台</th><th>一局要花</th><th>怎麼算獎勵</th><th>上限</th></tr>
+<tr><td>霓虹裂隙</td><td>10 ~ 2,000（自己選）</td><td>拿回 = 押注 × 分數 ÷ 12,000</td><td>8 倍</td></tr>
+<tr><td>復古 '82</td><td>10 ~ 2,000（自己選）</td><td>拿回 = 押注 × 分數 ÷ 8,000</td><td>8 倍</td></tr>
+<tr><td>二十一點</td><td>5 ~ 5,000（每手）</td><td>贏 1:1、Blackjack 3:2、平手退回</td><td>無</td></tr>
+</table>
+<div class="fine">例：霓虹裂隙押 100，打到 12,000 分剛好拿回 100；打到 30,000 分拿回 250。彈珠台打到一半按 ⌂ 離開，會用目前分數兌現。</div>
+</div>
+
+<div class="sec">HOW TO PLAY 操作</div>
+<div class="info">
+<h3>彈珠台</h3>
+手機：點螢幕<b>左半邊</b>＝左擋板，<b>右半邊</b>＝右擋板，等待發射時點一下發射。<br>
+電腦：<kbd>Z</kbd>/<kbd>←</kbd> 左擋板、<kbd>/</kbd>/<kbd>→</kbd> 右擋板、<kbd>Space</kbd> 發射、<kbd>↓</kbd>/<kbd>W</kbd> 時間減速、<kbd>P</kbd> 暫停。
+<h3 style="margin-top:10px">銀行</h3>
+籌碼低於 100 時可以借，債務最多 1,000，不收利息。淨資產 = 籌碼 − 債務。
+<div class="fine">這裡的籌碼是虛擬遊戲幣，只存在這個瀏覽器，不能換成真錢，也不能買。請把它當遊戲就好。</div>
+</div>
+</div></div>
+
+<div id="game" class="m-modern">
+<div id="hud">
+<button class="ib" id="bExit" title="兌現並回大廳">⌂</button>
+<div class="sc"><div id="hScore">0</div><div id="hSub"></div></div>
+<button class="ib" id="bMute">🔊</button>
+<button class="ib" id="bPause">⏸</button>
+</div>
+<div id="stage">
+<canvas id="cv"></canvas>
+<div id="warpWrap"><button id="warpBtn"><div id="warpFill"></div><span id="warpTxt">TIME WARP</span></button></div>
+<div id="ov"></div>
+</div>
+</div>
+
+<div id="bj">
+<div class="bjbar">
+<button class="ib" id="bjExit">⌂</button>
+<div class="t">BLACKJACK 21</div>
+<div style="display:flex;gap:8px;align-items:center"><div class="wchip">⚡<b class="w-chips">0</b></div><button class="ib bankbtn" data-openbank style="width:auto;padding:0 10px">🏦</button></div>
+</div>
+<div class="felt">
+<div class="zone"><div class="lbl">莊家 <b id="dTot"></b></div><div class="hand" id="dHand"></div></div>
+<div id="bjMsg"></div>
+<div class="zone"><div class="lbl">你 <b id="pTot"></b></div><div class="hand" id="pHand"></div></div>
+</div>
+<div class="ctrl" id="bjCtrl"></div>
+</div>
+
+<div id="modal"></div>
+<div id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const store={get(k,d){try{const v=JSON.parse(localStorage.getItem('volt_'+k));return v===null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem('volt_'+k,JSON.stringify(v))}catch(e){}}};
+const W=400,H=720,GRAV=700;
+/* ---------- 經濟設定（想調整平衡就改這裡）---------- */
+const CFG={
+ modern:{name:'霓虹裂隙',min:10,max:2000,ref:12000,cap:8},
+ retro:{name:"復古 '82",min:10,max:2000,ref:8000,cap:8}
+};
+const BJ_MIN=5,BJ_MAX=5000,LOAN_MAX=1000,LOAN_BELOW=100,START_CHIPS=1000;
+
+/* ---------- 錢包 ---------- */
+function chips(){return store.get('chips',START_CHIPS)}
+function debt(){return store.get('debt',0)}
+function setChips(v){store.set('chips',Math.max(0,Math.round(v)));updateWallet()}
+function setDebt(v){store.set('debt',Math.max(0,Math.round(v)));updateWallet()}
+function updateWallet(){
+ const c=chips(),d=debt();
+ document.querySelectorAll('.w-chips').forEach(e=>e.textContent=c.toLocaleString());
+ document.querySelectorAll('.w-debt').forEach(e=>e.textContent=d.toLocaleString());
+ document.querySelectorAll('.w-net').forEach(e=>e.textContent=(c-d).toLocaleString());
+}
+let toastT=0;
+function toast(s){const t=$('#toast');t.textContent=s;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2200)}
+function openModal(h){const m=$('#modal');m.innerHTML=h;m.style.display='flex'}
+function closeModal(){const m=$('#modal');m.style.display='none';m.innerHTML=''}
+
+/* ---------- 銀行 ---------- */
+function bankHtml(note){
+ const ch=chips(),db=debt(),credit=LOAN_MAX-db,can=ch<LOAN_BELOW&&credit>0;
+ const status=credit<=0?'已達借款上限 '+LOAN_MAX.toLocaleString():(can?'你可以借錢':'籌碼低於 '+LOAN_BELOW+' 才能借款');
+ return '<div class="panel"><h2>🏦 伏特銀行</h2>'+(note?'<div class="note">'+note+'</div>':'')+
+ '<div class="rows"><div>籌碼<b>'+ch.toLocaleString()+'</b></div><div>債務<b>'+db.toLocaleString()+'</b></div><div>可借額度<b>'+Math.max(0,credit).toLocaleString()+'</b></div><div>淨資產<b>'+(ch-db).toLocaleString()+'</b></div></div>'+
+ '<div class="hint">'+status+'。債務最多 '+LOAN_MAX.toLocaleString()+'，不收利息。</div>'+
+ '<div class="btns"><button class="btn gold" data-bank="b100"'+(can?'':' disabled')+'>借 100</button><button class="btn gold" data-bank="b500"'+(can?'':' disabled')+'>借 500</button><button class="btn gold" data-bank="bmax"'+(can?'':' disabled')+'>借滿</button></div>'+
+ '<div class="btns"><button class="btn" data-bank="r100"'+(db>0&&ch>0?'':' disabled')+'>還 100</button><button class="btn" data-bank="rall"'+(db>0&&ch>0?'':' disabled')+'>盡量還清</button></div>'+
+ ((ch<10&&credit<=0)?'<div class="btns"><button class="btn pri" data-bank="reset">宣告破產重來（籌碼 200，債務清空）</button></div>':'')+
+ '<div class="btns"><button class="btn" data-bank="close">關閉</button></div></div>';
+}
+function openBank(note){openModal(bankHtml(note))}
+function bankAct(a){
+ const ch=chips(),db=debt(),credit=LOAN_MAX-db;
+ if(a==='close'){closeModal();return}
+ if(a[0]==='b'){
+  if(!(ch<LOAN_BELOW&&credit>0))return;
+  const n=a==='b100'?100:a==='b500'?500:credit,amt=Math.min(n,credit);
+  setChips(ch+amt);setDebt(db+amt);sfx('bonus');toast('借了 '+amt+' 籌碼');
+ }else if(a[0]==='r'){
+  const n=a==='r100'?100:db,amt=Math.min(n,ch,db);
+  setChips(ch-amt);setDebt(db-amt);toast('還了 '+amt+' 籌碼');
+ }else if(a==='reset'){setChips(200);setDebt(0);toast('重新開始：籌碼 200')}
+ openBank();
+}
+
+/* ---------- Audio ---------- */
+let AC=null,muted=store.get('muted',false);
+function beep(f,d,type,v,slide){
+ if(muted)return;
+ try{
+  AC=AC||new (window.AudioContext||window.webkitAudioContext)();
+  if(AC.state==='suspended')AC.resume();
+  const t=AC.currentTime,o=AC.createOscillator(),g=AC.createGain();
+  o.type=type||'sine';o.frequency.setValueAtTime(f,t);
+  if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(40,f+slide),t+d);
+  g.gain.setValueAtTime(v||.12,t);g.gain.exponentialRampToValueAtTime(.001,t+d);
+  o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+d);
+ }catch(e){}
+}
+function vib(n){try{if(navigator.vibrate)navigator.vibrate(n)}catch(e){}}
+function sfx(n){
+ const R=!!(G&&G.mode==='retro'),sq=R?'square':'triangle';
+ switch(n){
+  case'bump':beep(R?300+Math.random()*80:480+Math.random()*260,.09,sq,.13);vib(8);break;
+  case'sling':beep(R?200:700,.07,R?'square':'sawtooth',.08);break;
+  case'target':beep(R?660:880,.1,sq,.12);break;
+  case'flip':beep(R?120:160,.04,R?'square':'sine',.06);break;
+  case'launch':beep(200,.35,R?'square':'sawtooth',.1,R?500:900);break;
+  case'drain':beep(R?300:400,.6,R?'square':'sawtooth',.12,-260);vib([40,30,80]);break;
+  case'portal':beep(300,.25,'sine',.12,900);break;
+  case'well':beep(220,.3,'sine',.12,500);break;
+  case'bonus':[0,1,2,3].forEach(i=>setTimeout(()=>beep((R?440:520)*Math.pow(1.26,i),.12,sq,.12),i*90));vib([20,20,40]);break;
+  case'warp':beep(900,.5,'sine',.12,-700);break;
+  case'over':[0,1,2].forEach(i=>setTimeout(()=>beep(440/Math.pow(1.2,i),.25,R?'square':'sawtooth',.12),i*200));break;
+  case'up':beep(600,.2,'sine',.12,600);break;
+  case'card':beep(900,.05,'triangle',.08,-300);break;
+  case'chip':beep(1400,.04,'square',.05);break;
+ }
+}
+
+/* ---------- Table ---------- */
+function buildTable(mode){
+ const segs=[];
+ const add=(x1,y1,x2,y2,rest,kick)=>segs.push({x1,y1,x2,y2,rest:rest==null?.4:rest,kick:kick||0,cd:0});
+ let px=0,py=200;const N=36;
+ for(let i=1;i<=N;i++){const t=Math.PI+Math.PI*i/N,x=200+200*Math.cos(t),y=200+200*Math.sin(t);add(px,py,x,y,.2);px=x;py=y}
+ add(0,200,0,585);add(400,200,400,720,.3);add(368,246,368,708,.3);add(368,708,400,708,.1);
+ add(0,585,102,650);add(368,585,266,650);
+ add(40,490,95,575,.3,380);add(328,490,273,575,.3,380);
+ const T={segs,bumpers:[],targets:[],well:null,portals:null,rolls:null,saucer:null};
+ if(mode==='modern'){
+  T.bumpers=[{x:135,y:255,r:24,pts:100},{x:235,y:235,r:24,pts:100},{x:185,y:335,r:24,pts:100},{x:75,y:420,r:15,pts:50},{x:295,y:420,r:15,pts:50}];
+  [120,165,235,280].forEach(x=>T.targets.push({x,y:125,r:9}));
+  T.well={x:185,y:465,R:95};
+  T.portals=[{x:30,y:290,r:14,c:'#ffb000'},{x:338,y:290,r:14,c:'#9b5cff'}];
+ }else{
+  T.bumpers=[{x:110,y:210,r:26,pts:100},{x:258,y:210,r:26,pts:100},{x:184,y:290,r:26,pts:100}];
+  T.rolls=[{x:120,y:85,r:10,l:'A'},{x:184,y:85,r:10,l:'B'},{x:248,y:85,r:10,l:'C'}];
+  T.saucer={x:184,y:420,r:13};
+ }
+ return T;
+}
+
+/* ---------- State ---------- */
+let G=null,inGame=false,scr='lobby',raf=0,lastT=0;
+const kb={L:false,R:false},tp={L:false,R:false};
+const UPS=[
+ {id:'len',i:'🛠',n:'長擋板',d:'兩側擋板變長一點'},
+ {id:'bump',i:'⚡',n:'超載彈力',d:'彈力塊分數 +50%，彈力更強'},
+ {id:'warp',i:'⏳',n:'時間沙漏',d:'減速能量充得更快，並立刻充滿'},
+ {id:'save',i:'🛡',n:'保險護盾',d:'漏球一次時自動救回'},
+ {id:'combo',i:'🔥',n:'連擊延長',d:'連擊的等待時間 +1 秒'},
+ {id:'ball',i:'🎱',n:'額外彈珠',d:'多一顆球'}
+];
+function newGame(mode,bet){
+ G={mode,bet,paid:false,T:buildTable(mode),score:0,balls:3,state:'ready',paused:false,combo:0,comboT:0,mult:1,warp:0,warpT:0,time:0,
+  parts:[],texts:[],shake:0,saves:0,up:{len:0,bump:0,combo:0,warp:0},banner:null,wellT:0,wellSign:1,gateOn:false,
+  tgt:[0,0,0,0],roll:[0,0,0],bonusMult:1,best:store.get('best_'+mode,0),
+  fl:[{px:102,py:650,s:1,a:.5,a0:.5,ac:.5,w:0,len:70,on:false},{px:266,py:650,s:-1,a:.5,a0:.5,ac:.5,w:0,len:70,on:false}],ball:null};
+ resetBall();hideOv();setCanvas();updateHud();
+}
+function resetBall(){
+ const g=G;g.ball={x:384,y:699,vx:0,vy:0,r:8,trail:[],portalCd:0,held:0,sc:0,wc:0,idle:0};
+ g.gateOn=false;g.state='ready';g.combo=0;g.comboT=0;
+}
+function launch(){const g=G;if(!g||g.state!=='ready'||g.paused)return;g.state='play';g.ball.vy=-1120;sfx('launch')}
+
+/* ---------- Scoring / FX ---------- */
+function burst(x,y,c,n,sp){for(let i=0;i<n;i++){const a=Math.random()*6.283,s=sp*(.3+Math.random());G.parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,t:.5+Math.random()*.4,m:.9,c})}}
+function addScore(base,x,y,col){
+ const g=G,R=g.mode==='retro';
+ if(R){g.mult=g.bonusMult}else{
+  g.combo++;g.comboT=2.5+g.up.combo;g.mult=Math.min(8,1+Math.floor(g.combo/6));
+  g.warp=Math.min(100,g.warp+3*(1+.5*g.up.warp));
+ }
+ const p=Math.round(base*g.mult);g.score+=p;
+ g.texts.push({x,y,s:'+'+p,t:.9,c:col||'#fff'});
+}
+function banner(s){G.banner={s,t:1.8}}
+
+/* ---------- Physics ---------- */
+function colSeg(b,x1,y1,x2,y2,rad,rest,kick,w,cx,cy){
+ const ex=x2-x1,ey=y2-y1;let t=((b.x-x1)*ex+(b.y-y1)*ey)/(ex*ex+ey*ey);t=t<0?0:t>1?1:t;
+ const px=x1+ex*t,py=y1+ey*t,dx=b.x-px,dy=b.y-py,d2=dx*dx+dy*dy,m=b.r+rad;
+ if(d2>=m*m||d2<1e-9)return 0;
+ const d=Math.sqrt(d2),nx=dx/d,ny=dy/d;b.x=px+nx*m;b.y=py+ny*m;
+ const sx=w?-(py-cy)*w:0,sy=w?(px-cx)*w:0;
+ const vn=(b.vx-sx)*nx+(b.vy-sy)*ny;let imp=0;
+ if(vn<0){const k=(1+rest)*vn;b.vx-=k*nx;b.vy-=k*ny;imp=-vn}
+ if(kick){const cur=b.vx*nx+b.vy*ny;if(cur<kick){b.vx+=nx*(kick-cur);b.vy+=ny*(kick-cur)}imp=Math.max(imp,1)}
+ return imp;
+}
+function colCircle(b,q,rest,kick){
+ const dx=b.x-q.x,dy=b.y-q.y,m=b.r+q.r,d2=dx*dx+dy*dy;
+ if(d2>=m*m||d2<1e-9)return false;
+ const d=Math.sqrt(d2),nx=dx/d,ny=dy/d;b.x=q.x+nx*m;b.y=q.y+ny*m;
+ const vn=b.vx*nx+b.vy*ny;if(vn<0){b.vx-=(1+rest)*vn*nx;b.vy-=(1+rest)*vn*ny}
+ if(kick){const cur=b.vx*nx+b.vy*ny;if(cur<kick){b.vx+=nx*(kick-cur);b.vy+=ny*(kick-cur)}}
+ return true;
+}
+function physics(h,frac){
+ const g=G,T=g.T,b=g.ball,R=g.mode==='retro';
+ for(const f of g.fl)f.ac=f.a0+(f.a-f.a0)*frac;
+ if(b.held>0){b.held-=h;if(b.held<=0){b.vx=(Math.random()<.5?-1:1)*(150+Math.random()*250);b.vy=-850;b.sc=1.2;sfx('bump');burst(b.x,b.y,'#fff',12,200)}return}
+ b.vy+=GRAV*h;b.portalCd-=h;b.sc-=h;b.wc-=h;
+ if(T.well){
+  const w=T.well,dx=w.x-b.x,dy=w.y-b.y,d=Math.hypot(dx,dy),sign=g.wellSign;
+  if(d<w.R&&d>1){const k=(1-d/w.R)*1500*sign;b.vx+=dx/d*k*h;b.vy+=dy/d*k*h}
+  if(d<13&&sign>0&&b.wc<=0){const a=Math.random()*6.283;b.vx=Math.cos(a)*750;b.vy=Math.sin(a)*750;b.wc=.8;addScore(500,w.x,w.y-20,'#00f0ff');sfx('well');burst(w.x,w.y,'#00f0ff',18,260);g.shake=6}
+ }
+ b.x+=b.vx*h;b.y+=b.vy*h;
+ if(!g.gateOn&&b.x>368&&b.y<200)g.gateOn=true;
+ for(const s of T.segs){const i=colSeg(b,s.x1,s.y1,s.x2,s.y2,0,s.rest,s.kick,0,0,0);if(i&&s.kick&&s.cd<=0){s.cd=.15;addScore(30,b.x,b.y-14,R?'#ff3030':'#ff2bd6');sfx('sling');burst(b.x,b.y,R?'#ff3030':'#ff2bd6',6,160)}}
+ if(g.gateOn)colSeg(b,400,222,368,246,0,.3,0,0,0,0);
+ for(const f of g.fl){
+  const tx=f.px+f.s*f.len*Math.cos(f.ac),ty=f.py+f.len*Math.sin(f.ac);
+  colSeg(b,f.px,f.py,tx,ty,6.5,.3,0,f.s*f.w,f.px,f.py);
+ }
+ for(const q of T.bumpers){
+  if(colCircle(b,q,.5,(R?380:430+40*g.up.bump))){q.flash=.2;addScore(q.pts*(1+.5*g.up.bump),q.x,q.y-q.r-4,R?'#ffee00':'#ff2bd6');sfx('bump');burst(q.x,q.y,R?'#ffee00':'#ff2bd6',8,220);g.shake=Math.max(g.shake,R?0:4)}
+ }
+ T.targets.forEach((q,i)=>{
+  if(colCircle(b,q,.6,0)){q.flash=.2;sfx('target');
+   if(!g.tgt[i]){g.tgt[i]=1;addScore(300,q.x,q.y+20,'#00f0ff');burst(q.x,q.y,'#00f0ff',10,200)}else addScore(50,q.x,q.y+20,'#00f0ff');
+   if(g.tgt.every(v=>v)){g.tgt=[0,0,0,0];addScore(3000,200,160,'#ffee00');g.warp=100;banner('OVERLOAD!');sfx('bonus');g.shake=10}
+  }
+ });
+ if(T.portals&&b.portalCd<=0){
+  for(let i=0;i<2;i++){const p=T.portals[i],o=T.portals[1-i];
+   if(Math.hypot(b.x-p.x,b.y-p.y)<p.r+2){
+    const sp=Math.max(Math.hypot(b.vx,b.vy),550),dir=i===0?1:-1,od=-dir;
+    burst(p.x,p.y,p.c,14,220);
+    b.x=o.x+od*(o.r+b.r+3);b.y=o.y;b.vx=od*sp;b.vy=sp*.15;b.portalCd=.6;
+    addScore(250,o.x,o.y-20,o.c);sfx('portal');burst(o.x,o.y,o.c,14,220);break;
+   }
+  }
+ }
+ if(T.rolls){
+  T.rolls.forEach((q,i)=>{
+   if(!g.roll[i]&&Math.hypot(b.x-q.x,b.y-q.y)<q.r){
+    g.roll[i]=1;addScore(500,q.x,q.y+20,'#40ff60');sfx('target');
+    if(g.roll.every(v=>v)){g.roll=[0,0,0];g.bonusMult=Math.min(5,g.bonusMult+1);addScore(2000,184,130,'#ffee00');banner('BONUS X'+g.bonusMult);sfx('bonus')}
+   }
+  });
+ }
+ if(T.saucer&&b.sc<=0){
+  const s=T.saucer;
+  if(Math.hypot(b.x-s.x,b.y-s.y)<8){b.x=s.x;b.y=s.y;b.vx=b.vy=0;b.held=1;addScore(500,s.x,s.y-24,'#30e0ff');sfx('bonus')}
+ }
+ const sp=Math.hypot(b.vx,b.vy);if(sp>1500){b.vx*=1500/sp;b.vy*=1500/sp}
+ if(b.y>H+20)drain();
+}
+function drain(){
+ const g=G;if(g.state!=='play')return;
+ if(g.saves>0){g.saves--;banner('SHIELD SAVE!');sfx('bonus');resetBall();return}
+ g.state='drained';g.balls--;sfx('drain');
+ setTimeout(()=>{
+  if(G!==g)return;
+  if(g.balls<=0)gameOver();
+  else if(g.mode==='modern')showUpgrades();
+  else resetBall();
+ },800);
+}
+function step(dt){
+ const g=G;
+ if(g.paused||g.state==='over'||g.state==='upgrade')return;
+ g.time+=dt;
+ g.shake=Math.max(0,g.shake-dt*30);
+ if(g.banner){g.banner.t-=dt;if(g.banner.t<=0)g.banner=null}
+ for(const f of g.fl){
+  const want=f.s===1?(kb.L||tp.L):(kb.R||tp.R);
+  if(want&&!f.on&&g.state!=='drained')sfx('flip');f.on=want;
+  const target=want?-.45:.5,sp=want?22:13;f.a0=f.a;
+  const d=target-f.a,m=sp*dt;f.a=Math.abs(d)<=m?target:f.a+Math.sign(d)*m;f.w=(f.a-f.a0)/dt;
+ }
+ for(const q of g.T.bumpers)if(q.flash>0)q.flash-=dt;
+ for(const q of g.T.targets)if(q.flash>0)q.flash-=dt;
+ for(const s of g.T.segs)if(s.cd>0)s.cd-=dt;
+ let scale=1;
+ if(g.warpT>0){g.warpT-=dt;scale=.45;if(g.warpT<=0)g.warpT=0}
+ g.wellT+=dt*scale;g.wellSign=(Math.floor(g.wellT/3.5)%2===0)?1:-1;
+ if(g.state==='play'||g.state==='drained'){
+  const SUB=10,h=dt*scale/SUB;
+  for(let i=0;i<SUB;i++){if(g.state==='play')physics(h,(i+1)/SUB)}
+  const b=g.ball;
+  if(g.state==='play'){
+   if(Math.hypot(b.vx,b.vy)<20&&b.held<=0){b.idle+=dt;if(b.idle>3){b.vy=-320;b.vx=(Math.random()-.5)*200;b.idle=0}}else b.idle=0;
+   if(g.mode==='modern'){g.comboT-=dt;if(g.comboT<=0){g.combo=0;g.mult=1}}
+  }
+ }
+ const b=g.ball;
+ if(g.state==='ready'){b.trail.length=0}else{b.trail.push({x:b.x,y:b.y});if(b.trail.length>(g.warpT>0?28:14))b.trail.shift()}
+ for(let i=g.parts.length-1;i>=0;i--){const p=g.parts[i];p.t-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=300*dt;if(p.t<=0)g.parts.splice(i,1)}
+ for(let i=g.texts.length-1;i>=0;i--){const p=g.texts[i];p.t-=dt;p.y-=30*dt;if(p.t<=0)g.texts.splice(i,1)}
+}
+function doWarp(){
+ const g=G;if(!g||g.mode!=='modern'||g.state!=='play'||g.paused)return;
+ if(g.warp>=100&&g.warpT<=0){g.warp=0;g.warpT=4.5;sfx('warp');banner('TIME WARP')}
+}
+
+/* ---------- 結算 / 流程 ---------- */
+function calc(g){const c=CFG[g.mode],mult=Math.min(c.cap,g.score/c.ref);return{mult,payout:Math.floor(g.bet*mult)}}
+function settle(){
+ const g=G;if(!g||g.paid)return null;g.paid=true;
+ const r=calc(g);setChips(chips()+r.payout);
+ if(g.score>g.best){g.best=g.score;store.set('best_'+g.mode,g.score);r.nb=true}
+ store.set('plays',store.get('plays',0)+1);
+ return r;
+}
+function gameOver(){
+ const g=G;g.state='over';sfx('over');
+ const r=settle(),net=r.payout-g.bet;
+ showOv('<div class="panel"><h2>GAME OVER</h2><div>本局分數</div><div class="big">'+g.score.toLocaleString()+'</div>'+(r.nb?'<div>🏆 新紀錄！</div>':'')+
+  '<div class="rows"><div>押注<b>'+g.bet.toLocaleString()+'</b></div><div>倍率<b>x'+r.mult.toFixed(2)+'</b></div><div>拿回<b>'+r.payout.toLocaleString()+'</b></div><div>淨損益<b class="'+(net>=0?'win':'lose')+'">'+(net>=0?'+':'')+net.toLocaleString()+'</b></div></div>'+
+  '<div class="btns"><button class="btn gold" data-act="again">再玩一次（可改注）</button><button class="btn" data-act="lobby">回大廳</button></div></div>');
+}
+function showUpgrades(){
+ const g=G;g.state='upgrade';
+ const pool=UPS.slice().sort(()=>Math.random()-.5).slice(0,3);
+ sfx('up');
+ showOv('<div class="panel"><h2>選一張升級卡</h2><div style="opacity:.8">剩下 '+g.balls+' 顆球 · 目前 '+g.score.toLocaleString()+' 分</div><div class="ups">'+
+  pool.map(u=>'<button class="up" data-up="'+u.id+'"><b>'+u.i+'</b><span><strong>'+u.n+'</strong><small>'+u.d+'</small></span></button>').join('')+'</div></div>');
+}
+function applyUp(id){
+ const g=G;
+ if(id==='len'){g.up.len++;g.fl.forEach(f=>f.len=70+Math.min(g.up.len,2)*3)}
+ else if(id==='bump')g.up.bump++;
+ else if(id==='warp'){g.up.warp++;g.warp=100}
+ else if(id==='save')g.saves++;
+ else if(id==='combo')g.up.combo++;
+ else if(id==='ball')g.balls++;
+ hideOv();resetBall();
+}
+function showOv(h){const o=$('#ov');o.innerHTML=h;o.style.display='flex'}
+function hideOv(){const o=$('#ov');o.style.display='none';o.innerHTML=''}
+function togglePause(){
+ const g=G;if(!g||g.state==='over'||g.state==='upgrade')return;
+ g.paused=!g.paused;
+ if(g.paused)showOv('<div class="panel"><h2>暫停</h2><div class="hint">離開會用目前分數 '+g.score.toLocaleString()+' 兌現</div><div class="btns"><button class="btn pri" data-act="resume">繼續</button><button class="btn" data-act="lobby">兌現並回大廳</button></div></div>');
+ else hideOv();
+}
+$('#ov').addEventListener('click',e=>{
+ const u=e.target.closest('[data-up]');if(u){applyUp(u.dataset.up);return}
+ const a=e.target.closest('[data-act]');if(!a)return;
+ const act=a.dataset.act;
+ if(act==='resume')togglePause();
+ else if(act==='again'){const m=G.mode;toLobby(true);openBetPicker(m)}
+ else if(act==='lobby')toLobby();
+});
+
+/* ---------- 下注視窗 ---------- */
+function openBetPicker(mode){
+ const c=CFG[mode],have=chips();
+ if(have<c.min){openBank('籌碼不足 '+c.min+'，先去銀行借一點吧。');return}
+ const mx=Math.min(c.max,have),v0=Math.min(50,mx);
+ const pre=[c.min,50,100,500,1000].filter((v,i,a)=>v>=c.min&&v<=mx&&a.indexOf(v)===i);
+ pre.push(mx);
+ openModal('<div class="panel"><h2>'+c.name+'</h2><div class="hint">押越多，分數換到的籌碼越多，風險也越大。</div>'+
+  '<div class="big" id="betV">'+v0+'</div>'+
+  '<input type="range" id="betR" min="'+c.min+'" max="'+mx+'" step="'+(mx>1000?10:1)+'" value="'+v0+'">'+
+  '<div class="pre">'+pre.map((v,i)=>'<button data-preset="'+v+'">'+(i===pre.length-1&&v===mx?'MAX '+v:v)+'</button>').join('')+'</div>'+
+  '<div class="rows"><div>打到 '+c.ref.toLocaleString()+' 分<b id="betEven">拿回 '+v0+'</b></div><div>最高 '+c.cap+' 倍<b id="betMax">'+(v0*c.cap).toLocaleString()+'</b></div></div>'+
+  '<div class="btns"><button class="btn gold" data-go="'+mode+'">投幣開始 ▶</button><button class="btn" data-cancel>取消</button></div></div>');
+ const r=$('#betR');
+ const upd=()=>{const v=+r.value;$('#betV').textContent=v.toLocaleString();$('#betEven').textContent='拿回 '+v.toLocaleString();$('#betMax').textContent=(v*c.cap).toLocaleString()};
+ r.addEventListener('input',upd);
+ $('#modal').querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{r.value=b.dataset.preset;upd();sfx('chip')}));
+}
+$('#modal').addEventListener('click',e=>{
+ const bk=e.target.closest('[data-bank]');if(bk){bankAct(bk.dataset.bank);return}
+ const go=e.target.closest('[data-go]');if(go){const bet=+$('#betR').value;closeModal();startGame(go.dataset.go,bet);return}
+ if(e.target.closest('[data-cancel]')){closeModal();if(scr==='game')toLobby(true)}
+});
+document.querySelectorAll('[data-openbank]').forEach(b=>b.addEventListener('click',()=>openBank()));
+
+/* ---------- HUD ---------- */
+function updateHud(){
+ const g=G;if(!g)return;const R=g.mode==='retro';
+ $('#hScore').textContent=R?String(g.score).padStart(7,'0'):g.score.toLocaleString();
+ const r=calc(g);
+ let s='球 '+'●'.repeat(Math.max(0,g.balls))+'　押 '+g.bet+' → 目前拿回 '+r.payout.toLocaleString();
+ if(!R){s+=g.mult>1?'　<span id="hCombo">COMBO x'+g.mult+'</span>':(g.combo>0?'　連擊 '+g.combo:'')}
+ else s+='　BONUS X'+g.bonusMult;
+ $('#hSub').innerHTML=s;
+ if(!R){
+  const act=g.warpT>0,pct=act?g.warpT/4.5*100:g.warp;
+  $('#warpFill').style.width=pct+'%';
+  $('#warpBtn').classList.toggle('ready',!act&&g.warp>=100);
+  $('#warpTxt').textContent=act?'WARP ACTIVE':(g.warp>=100?'TIME WARP ▶ READY':'TIME WARP '+Math.floor(g.warp)+'%');
+ }
+}
+
+/* ---------- Rendering ---------- */
+function setCanvas(){
+ if(!G)return;const cv=$('#cv'),st=$('#stage'),R=G.mode==='retro';
+ const aw=st.clientWidth-8,ah=st.clientHeight-8;
+ const w=Math.max(100,Math.min(aw,ah*W/H)),h=w*H/W;
+ cv.style.width=w+'px';cv.style.height=h+'px';
+ if(R){cv.width=200;cv.height=360}else{const S=Math.min(2.5,w*(window.devicePixelRatio||1)/W);cv.width=Math.round(W*S);cv.height=Math.round(H*S)}
+}
+function path(ctx,list){ctx.beginPath();for(const s of list){ctx.moveTo(s.x1,s.y1);ctx.lineTo(s.x2,s.y2)}}
+function draw(){
+ const g=G,cv=$('#cv'),ctx=cv.getContext('2d'),S=cv.width/W,R=g.mode==='retro';
+ ctx.setTransform(S,0,0,S,0,0);ctx.shadowBlur=0;ctx.lineCap='round';ctx.lineJoin='round';
+ if(g.shake>0&&!R)ctx.translate((Math.random()-.5)*g.shake,(Math.random()-.5)*g.shake);
+ R?drawRetro(ctx,g):drawModern(ctx,g);
+}
+function drawModern(ctx,g){
+ const T=g.T;
+ const bg=ctx.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#0a1230');bg.addColorStop(1,'#05060f');
+ ctx.fillStyle=bg;ctx.fillRect(-20,-20,W+40,H+40);
+ ctx.strokeStyle='rgba(0,240,255,.06)';ctx.lineWidth=1;ctx.beginPath();
+ const off=(g.time*12)%40;
+ for(let x=0;x<=W;x+=40){ctx.moveTo(x,0);ctx.lineTo(x,H)}
+ for(let y=-40+off;y<=H;y+=40){ctx.moveTo(0,y);ctx.lineTo(W,y)}
+ ctx.stroke();
+ if(g.warpT>0){ctx.fillStyle='rgba(60,110,255,.14)';ctx.fillRect(0,0,W,H)}
+ const walls=T.segs.filter(s=>!s.kick),slings=T.segs.filter(s=>s.kick);
+ if(g.gateOn)walls.push({x1:400,y1:222,x2:368,y2:246});
+ ctx.lineWidth=3;ctx.shadowBlur=12;ctx.shadowColor='#00f0ff';ctx.strokeStyle='#00f0ff';path(ctx,walls);ctx.stroke();
+ ctx.shadowColor='#ff2bd6';ctx.strokeStyle='#ff2bd6';ctx.lineWidth=5;path(ctx,slings);ctx.stroke();
+ const w=T.well,att=g.wellSign>0,wc=att?'#00f0ff':'#ff2bd6';
+ ctx.shadowColor=wc;ctx.strokeStyle=wc;ctx.lineWidth=2;
+ for(let i=0;i<3;i++){const ph=((g.time*.7+i/3)%1),r=att?w.R*(1-ph):w.R*ph;ctx.globalAlpha=.15+.6*(att?ph:1-ph);ctx.beginPath();ctx.arc(w.x,w.y,Math.max(1,r),0,6.283);ctx.stroke()}
+ ctx.globalAlpha=1;ctx.fillStyle=wc;ctx.beginPath();ctx.arc(w.x,w.y,9,0,6.283);ctx.fill();
+ for(const p of T.portals){
+  ctx.shadowColor=p.c;ctx.strokeStyle=p.c;ctx.lineWidth=3;ctx.setLineDash([6,5]);ctx.lineDashOffset=-g.time*30;
+  ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.283);ctx.stroke();ctx.setLineDash([]);
+  ctx.globalAlpha=.35;ctx.fillStyle=p.c;ctx.beginPath();ctx.arc(p.x,p.y,p.r-3,0,6.283);ctx.fill();ctx.globalAlpha=1;
+ }
+ T.targets.forEach((q,i)=>{
+  const f=q.flash>0;ctx.shadowColor='#00f0ff';ctx.shadowBlur=g.tgt[i]||f?18:6;
+  ctx.fillStyle=g.tgt[i]||f?'#00f0ff':'rgba(0,240,255,.12)';ctx.strokeStyle='#00f0ff';ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(q.x,q.y,q.r,0,6.283);ctx.fill();ctx.stroke();
+ });
+ for(const q of T.bumpers){
+  const f=q.flash>0?q.flash/.2:0;
+  ctx.shadowColor='#ff2bd6';ctx.shadowBlur=14+24*f;ctx.lineWidth=3;ctx.strokeStyle=f>0?'#fff':'#ff2bd6';
+  ctx.fillStyle='rgba(255,43,214,'+(.15+.5*f)+')';
+  ctx.beginPath();ctx.arc(q.x,q.y,q.r,0,6.283);ctx.fill();ctx.stroke();
+  ctx.strokeStyle='rgba(0,240,255,.8)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(q.x,q.y,q.r*.5,0,6.283);ctx.stroke();
+ }
+ for(const f of g.fl){
+  const tx=f.px+f.s*f.len*Math.cos(f.a),ty=f.py+f.len*Math.sin(f.a);
+  ctx.shadowColor='#00f0ff';ctx.shadowBlur=14;ctx.strokeStyle='#00c8ff';ctx.lineWidth=13;ctx.beginPath();ctx.moveTo(f.px,f.py);ctx.lineTo(tx,ty);ctx.stroke();
+  ctx.shadowBlur=0;ctx.strokeStyle='rgba(255,255,255,.7)';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(f.px,f.py);ctx.lineTo(tx,ty);ctx.stroke();
+ }
+ const b=g.ball;ctx.shadowBlur=0;
+ for(let i=1;i<b.trail.length;i++){const a=b.trail[i-1],c=b.trail[i],k=i/b.trail.length;ctx.strokeStyle='rgba(0,240,255,'+(k*.5)+')';ctx.lineWidth=b.r*2*k;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(c.x,c.y);ctx.stroke()}
+ const gr=ctx.createRadialGradient(b.x-2,b.y-2,1,b.x,b.y,b.r);gr.addColorStop(0,'#fff');gr.addColorStop(1,'#7fe9ff');
+ ctx.shadowColor='#00f0ff';ctx.shadowBlur=20;ctx.fillStyle=gr;ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,6.283);ctx.fill();
+ ctx.shadowBlur=0;
+ for(const p of g.parts){ctx.globalAlpha=Math.max(0,p.t/p.m);ctx.fillStyle=p.c;ctx.fillRect(p.x-2,p.y-2,4,4)}
+ ctx.globalAlpha=1;ctx.textAlign='center';ctx.font='bold 15px system-ui';
+ for(const p of g.texts){ctx.globalAlpha=Math.min(1,p.t*2);ctx.fillStyle=p.c;ctx.fillText(p.s,p.x,p.y)}
+ ctx.globalAlpha=1;
+ overlayText(ctx,g,'#00f0ff');
+}
+function overlayText(ctx,g,col){
+ const R=g.mode==='retro';
+ if(g.state==='ready'){
+  ctx.globalAlpha=.6+.4*Math.sin(g.time*5);ctx.fillStyle=col;ctx.textAlign='center';
+  ctx.font=(R?'bold 20px monospace':'bold 20px system-ui');ctx.fillText(R?'PRESS START':'點一下發射',184,R?560:400);
+  ctx.font='bold 13px system-ui';ctx.fillText('▲ TAP',384,660);ctx.globalAlpha=1;
+ }
+ if(g.banner){
+  ctx.globalAlpha=Math.min(1,g.banner.t*2);ctx.textAlign='center';ctx.fillStyle=R?'#ffee00':'#fff';
+  if(!R){ctx.shadowColor='#ff2bd6';ctx.shadowBlur=20}
+  ctx.font=(R?'bold 34px monospace':'900 34px system-ui');ctx.fillText(g.banner.s,184,R?330:200);ctx.shadowBlur=0;ctx.globalAlpha=1;
+ }
+}
+function drawRetro(ctx,g){
+ const T=g.T;
+ ctx.fillStyle='#04040e';ctx.fillRect(-10,-10,W+20,H+20);
+ ctx.fillStyle='#1c1c40';
+ for(let i=0;i<24;i++){const x=(i*97)%360+10,y=(i*163)%520+130;ctx.fillRect(x,y,4,4)}
+ ctx.textAlign='center';ctx.fillStyle='#3a2a00';ctx.font='bold 34px monospace';ctx.fillText("RETRO '82",184,160);
+ ctx.fillStyle='#ffb000';ctx.font='bold 16px monospace';ctx.fillText('BONUS X'+g.bonusMult,184,365);
+ const walls=T.segs.filter(s=>!s.kick),slings=T.segs.filter(s=>s.kick);
+ if(g.gateOn)walls.push({x1:400,y1:222,x2:368,y2:246});
+ ctx.strokeStyle='#e8e8e8';ctx.lineWidth=5;path(ctx,walls);ctx.stroke();
+ ctx.strokeStyle='#ff3030';ctx.lineWidth=8;path(ctx,slings);ctx.stroke();
+ T.rolls.forEach((q,i)=>{
+  ctx.fillStyle=g.roll[i]?'#40ff60':'#10401a';ctx.beginPath();ctx.arc(q.x,q.y,q.r,0,6.283);ctx.fill();
+  ctx.fillStyle=g.roll[i]?'#000':'#40ff60';ctx.font='bold 14px monospace';ctx.fillText(q.l,q.x,q.y+5);
+ });
+ const s=T.saucer;ctx.fillStyle='#000';ctx.strokeStyle='#30e0ff';ctx.lineWidth=5;ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,6.283);ctx.fill();ctx.stroke();
+ for(const q of T.bumpers){
+  const f=q.flash>0;ctx.fillStyle=f?'#fff':'#ff3030';ctx.strokeStyle='#ffee00';ctx.lineWidth=6;
+  ctx.beginPath();ctx.arc(q.x,q.y,q.r,0,6.283);ctx.fill();ctx.stroke();
+  ctx.fillStyle=f?'#ff3030':'#fff';ctx.beginPath();ctx.arc(q.x,q.y,q.r*.3,0,6.283);ctx.fill();
+ }
+ ctx.lineCap='butt';
+ for(const f of g.fl){
+  const tx=f.px+f.s*f.len*Math.cos(f.a),ty=f.py+f.len*Math.sin(f.a);
+  ctx.strokeStyle='#ffee00';ctx.lineWidth=14;ctx.beginPath();ctx.moveTo(f.px,f.py);ctx.lineTo(tx,ty);ctx.stroke();
+  ctx.strokeStyle='#ff9020';ctx.lineWidth=4;ctx.stroke();
+ }
+ const b=g.ball;ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,6.283);ctx.fill();
+ for(const p of g.parts){ctx.fillStyle=p.c;ctx.fillRect(Math.round(p.x/2)*2,Math.round(p.y/2)*2,6,6)}
+ ctx.font='bold 18px monospace';
+ for(const p of g.texts){ctx.fillStyle=p.c;ctx.fillText(p.s,p.x,p.y)}
+ overlayText(ctx,g,'#ffb000');
+}
+
+/* ---------- Main loop / 畫面切換 ---------- */
+function loop(t){
+ if(!inGame)return;
+ raf=requestAnimationFrame(loop);
+ const dt=Math.min(.033,(t-lastT)/1000||.016);lastT=t;
+ if(G){step(dt);draw();updateHud()}
+}
+function show(n){
+ scr=n;inGame=(n==='game');
+ $('#lobby').style.display=n==='lobby'?'block':'none';
+ $('#bg').style.display=n==='lobby'?'block':'none';
+ $('#game').style.display=n==='game'?'flex':'none';
+ $('#bj').style.display=n==='bj'?'flex':'none';
+}
+function startGame(mode,bet){
+ if(chips()<bet){openBank('籌碼不夠。');return}
+ setChips(chips()-bet);
+ show('game');$('#game').className='m-'+mode;
+ kb.L=kb.R=tp.L=tp.R=false;ptr.clear();
+ newGame(mode,bet);
+ setTimeout(setCanvas,30);
+ cancelAnimationFrame(raf);lastT=performance.now();raf=requestAnimationFrame(loop);
+}
+function toLobby(silent){
+ if(G&&!G.paid){const r=settle();if(r&&!silent)toast('兌現：拿回 '+r.payout.toLocaleString()+' 籌碼')}
+ cancelAnimationFrame(raf);G=null;ptr.clear();
+ show('lobby');refreshStats();
+}
+function refreshStats(){
+ $('#cBestM').textContent=store.get('best_modern',0).toLocaleString();
+ $('#cBestR').textContent=store.get('best_retro',0).toLocaleString();
+ updateWallet();
+}
+document.querySelectorAll('[data-start]').forEach(b=>b.addEventListener('click',()=>{
+ const m=b.dataset.start;
+ if(AC&&AC.state==='suspended')AC.resume();
+ if(m==='bj')bjOpen();else openBetPicker(m);
+}));
+$('#bExit').addEventListener('click',()=>toLobby());
+$('#bPause').addEventListener('click',togglePause);
+$('#bMute').addEventListener('click',()=>{muted=!muted;store.set('muted',muted);$('#bMute').textContent=muted?'🔇':'🔊'});
+$('#bMute').textContent=muted?'🔇':'🔊';
+$('#warpBtn').addEventListener('pointerdown',e=>{e.stopPropagation();e.preventDefault();doWarp()});
+window.addEventListener('resize',setCanvas);
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&scr==='game'&&G&&!G.paused&&G.state!=='over'&&G.state!=='upgrade')togglePause()});
+
+/* ---------- Input ---------- */
+const ptr=new Map();
+function syncPtr(){const v=[...ptr.values()];tp.L=v.includes('L');tp.R=v.includes('R')}
+const cvEl=$('#cv');
+cvEl.addEventListener('pointerdown',e=>{
+ if(!G||G.paused)return;e.preventDefault();
+ if(AC&&AC.state==='suspended')AC.resume();
+ if(G.state==='ready'){launch();return}
+ const r=cvEl.getBoundingClientRect();
+ ptr.set(e.pointerId,(e.clientX-r.left)<r.width/2?'L':'R');syncPtr();
+});
+['pointerup','pointercancel','pointerleave'].forEach(ev=>cvEl.addEventListener(ev,e=>{ptr.delete(e.pointerId);syncPtr()}));
+cvEl.addEventListener('contextmenu',e=>e.preventDefault());
+addEventListener('keydown',e=>{
+ if(!inGame||!G||$('#modal').style.display==='flex')return;const k=e.key;
+ if(['ArrowLeft','z','Z','a','A'].includes(k)){kb.L=true;e.preventDefault()}
+ else if(['ArrowRight','/','m','M','d','D'].includes(k)){kb.R=true;e.preventDefault()}
+ else if(k===' '){e.preventDefault();launch()}
+ else if(['ArrowDown','Shift','w','W'].includes(k)){e.preventDefault();doWarp()}
+ else if(k==='p'||k==='P'||k==='Escape')togglePause();
+});
+addEventListener('keyup',e=>{
+ const k=e.key;
+ if(['ArrowLeft','z','Z','a','A'].includes(k))kb.L=false;
+ else if(['ArrowRight','/','m','M','d','D'].includes(k))kb.R=false;
+});
+
+/* ---------- 二十一點 ---------- */
+const BJ={shoe:[],sel:25,stake:0,p:[],d:[],phase:'bet',hide:true,msg:'',cls:'',busy:false};
+const RANKS=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+function newShoe(){
+ const s=[];for(let k=0;k<4;k++)for(const su of ['♠','♥','♦','♣'])for(const r of RANKS)s.push({r,s:su,nw:false});
+ for(let i=s.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[s[i],s[j]]=[s[j],s[i]]}
+ BJ.shoe=s;
+}
+function bjDraw(){if(BJ.shoe.length<20)newShoe();const c=BJ.shoe.pop();c.nw=true;sfx('card');return c}
+function bjVal(h){
+ let t=0,a=0;
+ for(const c of h){if(c.r==='A'){t+=11;a++}else if(['10','J','Q','K'].includes(c.r))t+=10;else t+=+c.r}
+ while(t>21&&a>0){t-=10;a--}
+ return t;
+}
+function bjOpen(){
+ if(BJ.shoe.length<20)newShoe();
+ show('bj');BJ.phase='bet';BJ.p=[];BJ.d=[];BJ.msg='選擇押注，然後發牌';BJ.cls='';BJ.hide=true;BJ.busy=false;
+ const ch=chips();BJ.sel=ch<BJ_MIN?0:Math.min(Math.max(BJ.sel,BJ_MIN),ch,BJ_MAX);
+ updateWallet();bjRender();
+}
+function cardHtml(c,hidden){
+ if(hidden)return '<div class="pc back"></div>';
+ const red=c.s==='♥'||c.s==='♦';
+ const cls='pc'+(red?' red':'')+(c.nw?' deal':'');c.nw=false;
+ return '<div class="'+cls+'"><span class="r">'+c.r+'</span><span class="s">'+c.s+'</span><span class="r b">'+c.r+'</span></div>';
+}
+function bjRender(){
+ $('#dHand').innerHTML=BJ.d.map((c,i)=>cardHtml(c,BJ.hide&&i===1)).join('');
+ $('#pHand').innerHTML=BJ.p.map(c=>cardHtml(c,false)).join('');
+ $('#dTot').textContent=BJ.d.length?(BJ.hide?bjVal([BJ.d[0]]):bjVal(BJ.d)):'';
+ $('#pTot').textContent=BJ.p.length?bjVal(BJ.p):'';
+ const m=$('#bjMsg');m.textContent=BJ.msg;m.className=BJ.cls;
+ const c=$('#bjCtrl'),ch=chips();
+ if(BJ.phase==='bet'||BJ.phase==='done'){
+  const lowFunds=ch<BJ_MIN;
+  c.innerHTML='<div class="betline">押注 <b>'+BJ.sel.toLocaleString()+'</b>　<span style="opacity:.7">籌碼 '+ch.toLocaleString()+'</span></div>'+
+   '<div class="chips"><button class="chp c5" data-chip="5">5</button><button class="chp c25" data-chip="25">25</button><button class="chp c100" data-chip="100">100</button><button class="chp c500" data-chip="500">500</button></div>'+
+   '<div class="row"><button class="btn" data-bj="clear">清除</button><button class="btn" data-bj="max">MAX</button><button class="btn" data-bj="half">½</button>'+
+   (lowFunds?'<button class="btn gold" data-openbank2>🏦 去借錢</button>':'<button class="btn gold" data-bj="deal"'+(BJ.sel<BJ_MIN?' disabled':'')+'>發牌 ▶</button>')+'</div>';
+ }else if(BJ.phase==='player'){
+  const can2=BJ.p.length===2&&ch>=BJ.stake;
+  c.innerHTML='<div class="betline">本手押注 <b>'+BJ.stake.toLocaleString()+'</b></div><div class="row"><button class="btn pri" data-bj="hit">要牌</button><button class="btn" data-bj="stand">停牌</button><button class="btn gold" data-bj="double"'+(can2?'':' disabled')+'>雙倍</button></div>';
+ }else{
+  c.innerHTML='<div class="betline">莊家出牌中⋯</div>';
+ }
+}
+function bjFinish(res){
+ const st=BJ.stake;let pay=0,msg,cls;
+ if(res==='bj'){pay=Math.floor(st*2.5);msg='BLACKJACK！ +'+(pay-st).toLocaleString();cls='win'}
+ else if(res==='win'){pay=st*2;msg='你贏了 +'+st.toLocaleString();cls='win'}
+ else if(res==='push'){pay=st;msg='平手，退回押注';cls='push'}
+ else{msg=(res==='bust'?'爆牌！ ':'莊家勝 ')+'-'+st.toLocaleString();cls='lose'}
+ if(pay)setChips(chips()+pay);
+ if(cls==='win')sfx('bonus');else if(cls==='lose')sfx('drain');
+ BJ.hide=false;BJ.phase='done';BJ.msg=msg;BJ.cls=cls;BJ.busy=false;
+ if(chips()<BJ_MIN)BJ.msg+='　籌碼不足，可以去銀行';
+ BJ.sel=Math.min(st,chips(),BJ_MAX);
+ bjRender();
+}
+function bjDeal(){
+ const ch=chips();if(BJ.sel<BJ_MIN||BJ.sel>ch)return;
+ BJ.stake=BJ.sel;setChips(ch-BJ.stake);sfx('chip');
+ BJ.p=[bjDraw(),bjDraw()];BJ.d=[bjDraw(),bjDraw()];BJ.hide=true;BJ.phase='player';BJ.msg='';BJ.cls='';
+ const pb=bjVal(BJ.p)===21,db=bjVal(BJ.d)===21;
+ if(pb||db){BJ.hide=false;bjRender();setTimeout(()=>bjFinish(pb&&db?'push':pb?'bj':'lose'),600);BJ.phase='dealer';return}
+ bjRender();
+}
+function bjHit(){
+ BJ.p.push(bjDraw());const v=bjVal(BJ.p);
+ if(v>21){BJ.hide=false;BJ.phase='dealer';bjRender();setTimeout(()=>bjFinish('bust'),500)}
+ else if(v===21){bjStand()}
+ else bjRender();
+}
+function bjStand(){
+ BJ.phase='dealer';BJ.hide=false;bjRender();
+ const play=()=>{
+  if(bjVal(BJ.d)<17){BJ.d.push(bjDraw());bjRender();setTimeout(play,650)}
+  else{
+   const pv=bjVal(BJ.p),dv=bjVal(BJ.d);
+   bjFinish(dv>21?'win':pv>dv?'win':pv===dv?'push':'lose');
+  }
+ };
+ setTimeout(play,650);
+}
+function bjDouble(){
+ const ch=chips();if(BJ.p.length!==2||ch<BJ.stake)return;
+ setChips(ch-BJ.stake);BJ.stake*=2;sfx('chip');
+ BJ.p.push(bjDraw());
+ if(bjVal(BJ.p)>21){BJ.hide=false;BJ.phase='dealer';bjRender();setTimeout(()=>bjFinish('bust'),500)}
+ else bjStand();
+}
+$('#bjCtrl').addEventListener('click',e=>{
+ if(e.target.closest('[data-openbank2]')){openBank('籌碼不足 '+BJ_MIN+'。');return}
+ const ch=e.target.closest('[data-chip]');
+ if(ch&&(BJ.phase==='bet'||BJ.phase==='done')){BJ.phase='bet';BJ.sel=Math.min(BJ.sel+ +ch.dataset.chip,chips(),BJ_MAX);sfx('chip');BJ.p=[];BJ.d=[];BJ.msg='';BJ.cls='';bjRender();return}
+ const b=e.target.closest('[data-bj]');if(!b)return;
+ const a=b.dataset.bj;
+ if(BJ.phase==='bet'||BJ.phase==='done'){
+  if(a==='clear'){BJ.phase='bet';BJ.sel=0;BJ.p=[];BJ.d=[];BJ.msg='';BJ.cls='';bjRender()}
+  else if(a==='max'){BJ.phase='bet';BJ.sel=Math.min(chips(),BJ_MAX);bjRender()}
+  else if(a==='half'){BJ.phase='bet';BJ.sel=Math.max(0,Math.floor(BJ.sel/2));bjRender()}
+  else if(a==='deal'){BJ.phase='bet';bjDeal()}
+ }else if(BJ.phase==='player'){
+  if(a==='hit')bjHit();else if(a==='stand')bjStand();else if(a==='double')bjDouble();
+ }
+});
+$('#bjExit').addEventListener('click',()=>{
+ if(BJ.phase==='player'){toast('這手還沒結束，先停牌或要牌');return}
+ if(BJ.phase==='dealer')return;
+ show('lobby');refreshStats();
+});
+
+/* ---------- 大廳背景 ---------- */
+(function(){
+ const c=$('#bg'),x=c.getContext('2d');let pts=[];
+ function rs(){c.width=innerWidth;c.height=innerHeight;pts=Array.from({length:Math.min(70,Math.floor(innerWidth/18))},()=>({x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4}))}
+ rs();addEventListener('resize',rs);
+ function f(){
+  requestAnimationFrame(f);if(scr!=='lobby')return;
+  x.fillStyle='#05060d';x.fillRect(0,0,c.width,c.height);
+  const gl=x.createRadialGradient(c.width/2,0,0,c.width/2,0,c.height*.8);gl.addColorStop(0,'rgba(255,209,102,.12)');gl.addColorStop(1,'transparent');x.fillStyle=gl;x.fillRect(0,0,c.width,c.height);
+  for(const p of pts){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1}
+  for(let i=0;i<pts.length;i++){
+   for(let j=i+1;j<pts.length;j++){const d=Math.hypot(pts[i].x-pts[j].x,pts[i].y-pts[j].y);if(d<130){x.strokeStyle=(i%4===0?'rgba(255,209,102,':'rgba(0,240,255,')+(.15*(1-d/130))+')';x.beginPath();x.moveTo(pts[i].x,pts[i].y);x.lineTo(pts[j].x,pts[j].y);x.stroke()}}
+   x.fillStyle=i%4===0?'rgba(255,209,102,.8)':'rgba(0,240,255,.7)';x.fillRect(pts[i].x-1.5,pts[i].y-1.5,3,3);
+  }
+ }
+ f();
+})();
+refreshStats();
+</script>
+</body>
+</html>
