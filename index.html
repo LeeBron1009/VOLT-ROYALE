@@ -316,43 +316,78 @@ const BJ_MIN=5,BJ_MAX=5000,LOAN_MAX=1000,LOAN_BELOW=100,START_CHIPS=1000;
 /* ---------- 錢包 ---------- */
 function chips(){return store.get('chips',START_CHIPS)}
 function debt(){return store.get('debt',0)}
+function savings(){return store.get('sav',0)}
 function setChips(v){store.set('chips',Math.max(0,Math.round(v)));updateWallet()}
 function setDebt(v){store.set('debt',Math.max(0,Math.round(v)));updateWallet()}
+function setSav(v){store.set('sav',Math.max(0,Math.round(v)));updateWallet()}
 function updateWallet(){
- const c=chips(),d=debt();
+ const c=chips(),d=debt(),s=savings();
  document.querySelectorAll('.w-chips').forEach(e=>e.textContent=c.toLocaleString());
+ document.querySelectorAll('.w-sav').forEach(e=>e.textContent=s.toLocaleString());
  document.querySelectorAll('.w-debt').forEach(e=>e.textContent=d.toLocaleString());
- document.querySelectorAll('.w-net').forEach(e=>e.textContent=(c-d).toLocaleString());
+ document.querySelectorAll('.w-net').forEach(e=>e.textContent=(c+s-d).toLocaleString());
 }
+(function(){
+ document.querySelectorAll('.wbar').forEach(w=>{
+  const d=w.querySelector('.debt');
+  if(d&&!w.querySelector('.w-sav')){const x=document.createElement('div');x.className='wchip';x.innerHTML='存款<b class="w-sav">0</b>';w.insertBefore(x,d)}
+ });
+ if(document.head){const st=document.createElement('style');
+  st.textContent='.bsec{margin:16px 0 4px;text-align:left;font-weight:800;letter-spacing:.1em;color:var(--gold);border-top:1px solid rgba(255,209,102,.3);padding-top:12px}.bkin{width:120px;padding:10px;border-radius:10px;border:1px solid var(--gold);background:#0b1020;color:#fff;font-size:16px;text-align:center}.btns .lb{align-self:center;font-size:13px;opacity:.8;min-width:36px}';
+  document.head.appendChild(st)}
+})();
 let toastT=0;
 function toast(s){const t=$('#toast');t.textContent=s;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2200)}
 function openModal(h){const m=$('#modal');m.innerHTML=h;m.style.display='flex'}
 function closeModal(){const m=$('#modal');m.style.display='none';m.innerHTML=''}
 
-/* ---------- 銀行 ---------- */
+/* ---------- 銀行（存款＋借款）---------- */
 function bankHtml(note){
- const ch=chips(),db=debt(),credit=LOAN_MAX-db,can=ch<LOAN_BELOW&&credit>0;
- const status=credit<=0?'已達借款上限 '+LOAN_MAX.toLocaleString():(can?'你可以借錢':'籌碼低於 '+LOAN_BELOW+' 才能借款');
- return '<div class="panel"><h2>🏦 伏特銀行</h2>'+(note?'<div class="note">'+note+'</div>':'')+
- '<div class="rows"><div>籌碼<b>'+ch.toLocaleString()+'</b></div><div>債務<b>'+db.toLocaleString()+'</b></div><div>可借額度<b>'+Math.max(0,credit).toLocaleString()+'</b></div><div>淨資產<b>'+(ch-db).toLocaleString()+'</b></div></div>'+
- '<div class="hint">'+status+'。債務最多 '+LOAN_MAX.toLocaleString()+'，不收利息。</div>'+
- '<div class="btns"><button class="btn gold" data-bank="b100"'+(can?'':' disabled')+'>借 100</button><button class="btn gold" data-bank="b500"'+(can?'':' disabled')+'>借 500</button><button class="btn gold" data-bank="bmax"'+(can?'':' disabled')+'>借滿</button></div>'+
- '<div class="btns"><button class="btn" data-bank="r100"'+(db>0&&ch>0?'':' disabled')+'>還 100</button><button class="btn" data-bank="rall"'+(db>0&&ch>0?'':' disabled')+'>盡量還清</button></div>'+
- ((ch<10&&credit<=0)?'<div class="btns"><button class="btn pri" data-bank="reset">宣告破產重來（籌碼 200，債務清空）</button></div>':'')+
+ const ch=chips(),sv=savings(),db=debt(),credit=LOAN_MAX-db,can=(ch+sv)<LOAN_BELOW&&credit>0;
+ const status=credit<=0?'已達借款上限 '+LOAN_MAX.toLocaleString():(can?'你可以借錢':'口袋籌碼加存款低於 '+LOAN_BELOW+' 才能借款');
+ const dis=(c)=>c?'':' disabled';
+ return '<div class="panel"><h2>🏦 伏特銀行</h2>'+(note?'<div class="note">'+note+(sv>0?' 你的存款還有 '+sv.toLocaleString()+'，可以領出來繼續玩。':'')+'</div>':'')+
+ '<div class="rows"><div>口袋籌碼<b>'+ch.toLocaleString()+'</b></div><div>保險箱存款<b>'+sv.toLocaleString()+'</b></div><div>債務<b>'+db.toLocaleString()+'</b></div><div>淨資產<b>'+(ch+sv-db).toLocaleString()+'</b></div></div>'+
+ '<div class="bsec">💰 保險箱（存款）</div>'+
+ '<div class="hint">存進去的錢不會被任何遊戲扣掉。就算口袋的籌碼輸光，也能隨時領出來繼續玩。不收手續費、沒有利息。</div>'+
+ '<div class="btns"><span class="lb">存入</span><button class="btn gold" data-bank="d100"'+dis(ch>0)+'>100</button><button class="btn gold" data-bank="d500"'+dis(ch>0)+'>500</button><button class="btn gold" data-bank="dhalf"'+dis(ch>1)+'>一半</button><button class="btn gold" data-bank="dall"'+dis(ch>0)+'>全部</button></div>'+
+ '<div class="btns"><span class="lb">領出</span><button class="btn pri" data-bank="w100"'+dis(sv>0)+'>100</button><button class="btn pri" data-bank="w500"'+dis(sv>0)+'>500</button><button class="btn pri" data-bank="wall"'+dis(sv>0)+'>全部</button></div>'+
+ '<div class="btns"><input class="bkin" id="bkAmt" type="number" inputmode="numeric" min="1" placeholder="自訂金額"><button class="btn gold" data-bank="dx">存入</button><button class="btn pri" data-bank="wx">領出</button></div>'+
+ '<div class="bsec">📄 借款</div>'+
+ '<div class="hint">'+status+'。債務最多 '+LOAN_MAX.toLocaleString()+'，不收利息。還款會先用口袋籌碼，不夠再用存款。</div>'+
+ '<div class="rows"><div>可借額度<b>'+Math.max(0,credit).toLocaleString()+'</b></div><div>目前債務<b>'+db.toLocaleString()+'</b></div></div>'+
+ '<div class="btns"><button class="btn gold" data-bank="b100"'+dis(can)+'>借 100</button><button class="btn gold" data-bank="b500"'+dis(can)+'>借 500</button><button class="btn gold" data-bank="bmax"'+dis(can)+'>借滿</button></div>'+
+ '<div class="btns"><button class="btn" data-bank="r100"'+dis(db>0&&ch+sv>0)+'>還 100</button><button class="btn" data-bank="rall"'+dis(db>0&&ch+sv>0)+'>盡量還清</button></div>'+
+ (((ch+sv)<10&&credit<=0)?'<div class="btns"><button class="btn pri" data-bank="reset">宣告破產重來（籌碼 200，債務清空）</button></div>':'')+
  '<div class="btns"><button class="btn" data-bank="close">關閉</button></div></div>';
 }
 function openBank(note){openModal(bankHtml(note))}
 function bankAct(a){
- const ch=chips(),db=debt(),credit=LOAN_MAX-db;
+ const ch=chips(),sv=savings(),db=debt(),credit=LOAN_MAX-db;
  if(a==='close'){closeModal();return}
- if(a[0]==='b'){
-  if(!(ch<LOAN_BELOW&&credit>0))return;
+ const amtIn=()=>{const el=$('#bkAmt');return parseInt(el&&el.value,10)};
+ const dep=n=>{const amt=Math.min(Math.max(0,Math.floor(n)),ch);if(amt<=0){toast('口袋裡沒有可以存的籌碼');return}setChips(ch-amt);setSav(sv+amt);sfx('chip');toast('存入 '+amt.toLocaleString()+' 到保險箱')};
+ const wd=n=>{const amt=Math.min(Math.max(0,Math.floor(n)),sv);if(amt<=0){toast('保險箱裡沒有錢');return}setSav(sv-amt);setChips(ch+amt);sfx('bonus');toast('領出 '+amt.toLocaleString()+' 籌碼')};
+ if(a==='d100')dep(100);
+ else if(a==='d500')dep(500);
+ else if(a==='dhalf')dep(Math.floor(ch/2));
+ else if(a==='dall')dep(ch);
+ else if(a==='w100')wd(100);
+ else if(a==='w500')wd(500);
+ else if(a==='wall')wd(sv);
+ else if(a==='dx'||a==='wx'){const n=amtIn();if(!(n>0)){toast('請先輸入金額');return}a==='dx'?dep(n):wd(n)}
+ else if(a==='b100'||a==='b500'||a==='bmax'){
+  if(!((ch+sv)<LOAN_BELOW&&credit>0))return;
   const n=a==='b100'?100:a==='b500'?500:credit,amt=Math.min(n,credit);
-  setChips(ch+amt);setDebt(db+amt);sfx('bonus');toast('借了 '+amt+' 籌碼');
- }else if(a[0]==='r'){
-  const n=a==='r100'?100:db,amt=Math.min(n,ch,db);
-  setChips(ch-amt);setDebt(db-amt);toast('還了 '+amt+' 籌碼');
- }else if(a==='reset'){setChips(200);setDebt(0);toast('重新開始：籌碼 200')}
+  setChips(ch+amt);setDebt(db+amt);sfx('bonus');toast('借了 '+amt.toLocaleString()+' 籌碼');
+ }else if(a==='r100'||a==='rall'){
+  const want=a==='r100'?100:db,amt=Math.min(want,db,ch+sv);
+  if(amt<=0)return;
+  const fromC=Math.min(amt,ch),fromS=amt-fromC;
+  setChips(ch-fromC);setSav(sv-fromS);setDebt(db-amt);toast('還了 '+amt.toLocaleString()+' 籌碼');
+ }else if(a==='reset'){
+  if((ch+sv)<10&&credit<=0){setChips(200);setSav(0);setDebt(0);toast('重新開始：籌碼 200')}
+ }
  openBank();
 }
 
