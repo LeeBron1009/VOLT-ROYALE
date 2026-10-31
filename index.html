@@ -2414,6 +2414,292 @@ function build(){
 build();
 })();
 
+/* ---------- 新分區：賽事區（賽馬・賽車）---------- */
+(function(){
+const STEPS=[5,10,25,50,100,250,500,1000];
+const TAKEOUT=0.08;               // 抽成 8%，所有押法的理論回報率都是 92%
+const fmt=n=>Math.round(n).toLocaleString();
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const pendSet=v=>store.set('pend',v);
+const NOW=()=>performance.now();
+function injectCss(){
+ if(!document.head)return;
+ const st=document.createElement('style');
+ st.textContent=`
+.t-racing{border-color:rgba(255,159,28,.65);box-shadow:0 0 34px rgba(255,159,28,.22);background:linear-gradient(160deg,rgba(130,60,10,.62),rgba(12,16,34,.85))}.t-racing .ti{color:#ff9f1c}
+.tile:hover.t-racing{box-shadow:0 0 46px rgba(255,159,28,.5)}
+.felt.bscroll{justify-content:flex-start;gap:10px;overflow-y:auto}.felt.bscroll::after{display:none}
+.opt{padding:8px 12px;border-radius:999px;border:1px solid var(--gold);background:rgba(255,209,102,.08);color:var(--gold);font-weight:800;font-size:13px}
+.opt.on{background:var(--gold);color:#221400}
+#rc-ctrl{max-height:46vh;overflow-y:auto}
+.rchead{z-index:1;text-align:center;font-weight:800;letter-spacing:.06em}
+.rchead small{display:block;font-weight:600;opacity:.8;letter-spacing:0;margin-top:2px}
+.rccv{width:100%;max-width:640px;height:auto;border-radius:12px;z-index:1;background:rgba(0,0,0,.35)}
+.rct{width:100%;max-width:600px;border-collapse:collapse;z-index:1;min-width:0!important;background:rgba(0,0,0,.28);border-radius:12px;overflow:hidden}
+.rct th,.rct td{padding:6px 4px;font-size:12px;border-bottom:1px solid rgba(255,255,255,.1);text-align:center;white-space:nowrap}
+.rct td:nth-child(2){text-align:left;white-space:normal}
+.rct tr[data-r]{cursor:pointer}.rct tr[data-r]:active{background:rgba(255,255,255,.12)}
+.rct tr.sel{background:rgba(255,209,102,.24)}
+.rct small{opacity:.75;font-size:10px}
+.rcn{display:inline-flex;width:26px;height:26px;border-radius:50%;align-items:center;justify-content:center;color:#111;font-weight:900;font-style:normal;font-size:13px}
+.rcpick{display:block;font-size:10px;color:var(--gold);font-weight:800}
+.fm{display:inline-block;min-width:14px;font-weight:800}.fm.g{color:#4dffa6}.fm.m{color:#fff}.fm.b{color:#ff8fa1}
+.slip{width:100%;max-width:600px;z-index:1;font-size:13px}
+.slip div{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;background:rgba(0,0,0,.3);margin-bottom:4px}
+.slip button{background:none;border:0;color:#ff8fa1;font-size:16px;cursor:pointer}
+.slip .ok{background:rgba(77,255,166,.18)}.slip .no{opacity:.65}
+`;
+ document.head.appendChild(st);
+}
+function mk(id,title,t){
+ const d=document.createElement('div');d.id=id;d.className='tbl';
+ d.innerHTML='<div class="bjbar"><button class="ib" id="'+id+'-back">⌂</button><div class="t" id="'+id+'-title">'+title+'</div><div style="display:flex;gap:8px;align-items:center"><div class="wchip">⚡<b class="w-chips">0</b></div><button class="ib bankbtn" data-openbank style="width:auto;padding:0 10px">🏦</button></div></div><div class="felt bscroll" id="'+id+'-felt" data-t="'+t+'"></div><div class="ctrl" id="'+id+'-ctrl"></div>';
+ document.body.appendChild(d);TBLS.push(id);
+ const ob=d.querySelector('[data-openbank]');if(ob)ob.addEventListener('click',()=>openBank());
+ return d;
+}
+function setMsg(id,t,c){const e=$('#'+id);if(e){e.textContent=t;e.className='msg '+(c||'')}}
+function shuf(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function randn(){let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+
+/* ===== 機率模型（Harville）：先決定名次，再演出比賽 ===== */
+function sampleOrder(p){
+ let idx=p.map((_,i)=>i);const ord=[];
+ while(idx.length){
+  const tot=idx.reduce((s,i)=>s+p[i],0);let r=Math.random()*tot,pick=idx[idx.length-1];
+  for(const i of idx){r-=p[i];if(r<0){pick=i;break}}
+  ord.push(pick);idx=idx.filter(i=>i!==pick);
+ }
+ return ord;
+}
+function pTop(p,i,k){          // i 進前 k 名的機率（k=1,2,3）
+ const n=p.length;let s=p[i];
+ if(k>=2)for(let j=0;j<n;j++)if(j!==i)s+=p[j]*p[i]/(1-p[j]);
+ if(k>=3)for(let j=0;j<n;j++){if(j===i)continue;for(let m=0;m<n;m++){if(m===i||m===j)continue;s+=p[j]*(p[m]/(1-p[j]))*(p[i]/(1-p[j]-p[m]))}}
+ return s;
+}
+function pExa(p,a,b){return p[a]*p[b]/(1-p[a])}
+function pTri(p,a,b,c){return p[a]*(p[b]/(1-p[a]))*(p[c]/(1-p[a]-p[b]))}
+function toOdds(prob,cap){const o=(1-TAKEOUT)/prob;return Math.round(Math.min(cap||500,Math.max(1.02,o))*100)/100}
+function fo(o){return o>=100?String(Math.round(o)):o>=10?o.toFixed(1):o.toFixed(2)}
+
+/* ===== 賽事資料 ===== */
+const HORSE_NAMES=['閃電','黑旋風','赤兔','白龍','烈焰','疾風','飛雪','夜行者','金輪','雷霆','追日','流星','青鋒','紫電','風之子','鐵騎','幻影','破曉','銀河','赤焰'];
+const CAR_NAMES=['Volt-X','Nova GT','Apex R','Zephyr','Drift K','Turbo-9','Phantom','Rogue S','Vector','Helix','Strobe','Ion-7','Pulse','Kairo','Titan Z','Neon RS'];
+const COLORS=['#e63946','#f4a261','#e9c46a','#2a9d8f','#4cc9f0','#7b6cf6','#f72585','#9ef01a'];
+const TYPES={win:{n:'獨贏',k:1,d:'第 1 名'},place:{n:'位置',k:1,d:'前 2 名'},show:{n:'前三',k:1,d:'前 3 名'},exa:{n:'連贏單',k:2,d:'依序猜第 1、2 名'},tri:{n:'三連單',k:3,d:'依序猜第 1、2、3 名，每注最多 100'}};
+const RC={mode:'horse',phase:'bet',run:[],cond:'dry',type:'win',picks:[],bet:10,slip:[],skip:false,order:[],fin:[],t0:0,raf:0,msg:''};
+function newRace(){
+ const pool=shuf(RC.mode==='horse'?HORSE_NAMES:CAR_NAMES).slice(0,8);
+ RC.cond=Math.random()<.65?'dry':'wet';
+ const r=pool.map(()=>Math.exp(randn()*.55));
+ const sum=r.reduce((a,b)=>a+b,0),pb=r.map(x=>x/sum);
+ const run=pool.map((name,i)=>{
+  const pr=Math.random(),pref=pr<.33?'dry':pr<.58?'wet':'any';
+  const form=[];for(let t=0;t<5;t++)form.push(0);
+  return{i,name,color:COLORS[i],pref,r:r[i],form};
+ });
+ for(let t=0;t<5;t++){const o=sampleOrder(pb);o.forEach((idx,pos)=>{run[idx].form[t]=pos+1})}
+ let p=run.map(x=>x.r*(x.pref===RC.cond?1.25:x.pref==='any'?1:.8));
+ let s=p.reduce((a,b)=>a+b,0);p=p.map(x=>x/s);
+ p=p.map(x=>Math.max(x,.03));s=p.reduce((a,b)=>a+b,0);p=p.map(x=>x/s);
+ run.forEach((x,i)=>{x.p=p[i];x.w=toOdds(pTop(p,i,1));x.pl=toOdds(pTop(p,i,2));x.sh=toOdds(pTop(p,i,3))});
+ RC.run=run;RC.p=p;RC.slip=[];RC.picks=[];RC.order=[];RC.fin=[];RC.phase='bet';RC.msg='';
+}
+function oddsFor(type,picks){
+ const p=RC.p;
+ if(type==='win')return RC.run[picks[0]].w;
+ if(type==='place')return RC.run[picks[0]].pl;
+ if(type==='show')return RC.run[picks[0]].sh;
+ if(type==='exa')return toOdds(pExa(p,picks[0],picks[1]));
+ return toOdds(pTri(p,picks[0],picks[1],picks[2]),5000);
+}
+function wins(type,picks,order){
+ if(type==='win')return order[0]===picks[0];
+ if(type==='place')return order.slice(0,2).includes(picks[0]);
+ if(type==='show')return order.slice(0,3).includes(picks[0]);
+ if(type==='exa')return order[0]===picks[0]&&order[1]===picks[1];
+ return order[0]===picks[0]&&order[1]===picks[1]&&order[2]===picks[2];
+}
+function pickLabel(type,picks){return picks.map(i=>'#'+(i+1)+' '+RC.run[i].name).join(' → ')}
+
+/* ===== 畫面 ===== */
+function head(){
+ const cn=RC.cond==='dry'?'☀️ 乾地':'🌧 濕地';
+ $('#rchead').innerHTML=(RC.mode==='horse'?'🐎 賽馬':'🏎 賽車')+'　今日場地：'+cn+'<small>名字旁邊的 ☀️／🌧 是適性：場地符合的跑得更好，不符合的會變差。近況是最近 5 場的名次。</small>';
+}
+function formHtml(f){return f.map(v=>'<span class="fm '+(v<=3?'g':v<=5?'m':'b')+'">'+v+'</span>').join('')}
+function table(){
+ const N=TYPES[RC.type].k;
+ let h='<tr><th></th><th>名稱 / 近況</th><th>適性</th><th>獨贏</th><th>位置</th><th>前三</th></tr>';
+ RC.run.forEach(x=>{
+  const pos=RC.picks.indexOf(x.i),sel=pos>=0;
+  const ap=x.pref==='any'?'➖':x.pref==='dry'?'☀️':'🌧';
+  const match=x.pref===RC.cond;
+  h+='<tr data-r="'+x.i+'" class="'+(sel?'sel':'')+'"><td><i class="rcn" style="background:'+x.color+'">'+(x.i+1)+'</i>'+(sel&&N>1?'<span class="rcpick">第'+(pos+1)+'名</span>':sel?'<span class="rcpick">已選</span>':'')+'</td><td>'+x.name+'<br><small>'+formHtml(x.form)+'</small></td><td>'+ap+(match?'<small style="color:#4dffa6;display:block">符合</small>':'')+'</td><td>×'+fo(x.w)+'</td><td>×'+fo(x.pl)+'</td><td>×'+fo(x.sh)+'</td></tr>';
+ });
+ $('#rctable').innerHTML='<table class="rct">'+h+'</table>';
+}
+function slipHtml(){
+ if(!RC.slip.length&&RC.phase==='bet'){$('#rcslip').innerHTML='<div class="hint" style="text-align:center">點上面的名單選馬（車），按「加入投注單」</div>';return}
+ const done=RC.phase==='done';
+ $('#rcslip').innerHTML='<div class="slip">'+RC.slip.map((b,k)=>{
+  const cls=done?(b.win?'ok':'no'):'';
+  return '<div class="'+cls+'"><span>'+TYPES[b.type].n+' '+pickLabel(b.type,b.picks)+'　×'+fo(b.odds)+'　押 '+fmt(b.stake)+(done?(b.win?'　→ 贏 '+fmt(b.ret):'　→ 沒中'):'')+'</span>'+(done?'':'<button data-rm="'+k+'">✕</button>')+'</div>';
+ }).join('')+'</div>';
+}
+function ctrl(){
+ const c=$('#rc-ctrl'),busy=RC.phase==='run',ch=chips();
+ if(RC.phase==='done'){c.innerHTML='<div class="row"><button class="btn gold spinbtn" data-a="next">下一場 ▶</button></div>';return}
+ const N=TYPES[RC.type].k,ready=RC.picks.length===N;
+ const tot=RC.slip.reduce((s,b)=>s+b.stake,0);
+ let pv='';
+ if(ready){const o=oddsFor(RC.type,RC.picks);pv='　×'+fo(o)+' → 贏可拿回 '+fmt(Math.round(RC.bet*o))}
+ else pv='　（'+TYPES[RC.type].d+'：還要選 '+(N-RC.picks.length)+' 個）';
+ c.innerHTML='<div class="row">'+Object.keys(TYPES).map(k=>'<button class="opt'+(RC.type===k?' on':'')+'" data-a="t'+k+'"'+(busy?' disabled':'')+'>'+TYPES[k].n+'</button>').join('')+'</div>'+
+ '<div class="betline">每注 <b>'+fmt(RC.bet)+'</b>'+pv+'</div>'+
+ '<div class="row"><button class="btn" data-a="dn">－</button><button class="btn" data-a="up">＋</button><button class="btn gold" data-a="add"'+((ready&&tot+RC.bet<=ch&&RC.slip.length<8&&!(RC.type==='tri'&&RC.bet>100))?'':' disabled')+'>加入投注單</button></div>'+
+ '<div class="row"><span class="mini" style="align-self:center">共 '+fmt(tot)+'（籌碼 '+fmt(ch)+'）</span><button class="btn" data-a="clear"'+(RC.slip.length?'':' disabled')+'>清除</button><button class="btn'+(RC.skip?' pri':'')+'" data-a="skip">⚡ 快速</button><button class="btn gold spinbtn" data-a="go"'+((RC.slip.length&&!busy)?'':' disabled')+'>開跑 🏁</button></div>';
+}
+function refresh(){head();table();slipHtml();ctrl()}
+
+/* ===== 比賽動畫 ===== */
+const LANE=34,TOP=10,X0=64;
+function canvasH(){return TOP*2+LANE*8}
+function plan(order){
+ const T0=RC.mode==='horse'?10.5:9,ts=new Array(8),f=new Array(8);let tc=T0;
+ order.forEach((idx,rank)=>{
+  ts[idx]=tc;tc+=.25+Math.random()*.2;
+  const w=.9+Math.random()*.9,A=Math.min(.85/w,.3+Math.random()*.6),ph=Math.random()*6.28;
+  f[idx]={w,A,ph};
+ });
+ return{ts,f};
+}
+function prog(pl,i,t){
+ const q=pl.f[i],g=x=>x+q.A*Math.sin(q.w*x+q.ph)-q.A*Math.sin(q.ph);
+ if(t>=pl.ts[i])return 1;
+ return Math.max(0,g(t)/g(pl.ts[i]));
+}
+function drawTrack(pl,t){
+ const cv=$('#rccv'),ctx=cv.getContext('2d'),W=cv.width,H=cv.height,x1=W-56;
+ ctx.clearRect(0,0,W,H);
+ for(let l=0;l<8;l++){ctx.fillStyle=(l%2)?'rgba(255,255,255,.05)':'rgba(255,255,255,.1)';ctx.fillRect(0,TOP+l*LANE,W,LANE)}
+ ctx.fillStyle=RC.mode==='horse'?'rgba(80,140,60,.25)':'rgba(120,120,130,.22)';ctx.fillRect(0,TOP,W,LANE*8);
+ ctx.fillStyle='#fff';ctx.fillRect(X0-4,TOP,3,LANE*8);
+ for(let k=0;k<8;k++){ctx.fillStyle=k%2?'#fff':'#111';ctx.fillRect(x1,TOP+k*LANE,9,LANE);}
+ ctx.font='bold 12px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+ RC.run.forEach(x=>{
+  const lane=x.i,cy=TOP+lane*LANE+LANE/2,px=pl?prog(pl,x.i,t):0,cx=X0+px*(x1-X0-30);
+  ctx.beginPath();ctx.arc(14,cy,10,0,7);ctx.fillStyle=x.color;ctx.fill();ctx.fillStyle='#111';ctx.fillText(x.i+1,14,cy+1);
+  if(RC.mode==='horse'){
+   const bob=pl&&t<pl.ts[x.i]?Math.sin(t*14+x.i)*2.2:0;
+   ctx.save();ctx.translate(cx+16,cy+bob);ctx.scale(-1,1);ctx.font='26px sans-serif';ctx.fillText('🐎',0,2);ctx.restore();
+   ctx.fillStyle=x.color;ctx.fillRect(cx+14,cy-14+bob,10,4);
+  }else{
+   ctx.fillStyle=x.color;ctx.beginPath();if(ctx.roundRect)ctx.roundRect(cx,cy-9,38,18,6);else ctx.rect(cx,cy-9,38,18);ctx.fill();
+   ctx.fillStyle='rgba(255,255,255,.85)';ctx.fillRect(cx+16,cy-5,10,10);
+   ctx.fillStyle='#111';ctx.fillRect(cx+4,cy-11,8,4);ctx.fillRect(cx+4,cy+7,8,4);ctx.fillRect(cx+27,cy-11,8,4);ctx.fillRect(cx+27,cy+7,8,4);
+   if(pl&&t<pl.ts[x.i]){ctx.fillStyle='rgba(255,180,60,.8)';ctx.fillRect(cx-8-Math.random()*6,cy-2,8,4)}
+  }
+ });
+ if(RC.fin.length){RC.fin.forEach((idx,rank)=>{if(rank<3){const cy=TOP+idx*LANE+LANE/2;ctx.font='18px sans-serif';ctx.fillText(['🥇','🥈','🥉'][rank],x1+26,cy)}})}
+}
+function runRace(pl){
+ return new Promise(res=>{
+  const t0=NOW(),speed=RC.skip?4:1,maxT=Math.max(...pl.ts)+.8;
+  function frame(){
+   const t=(NOW()-t0)/1000*speed;
+   RC.fin=RC.order.filter(i=>t>=pl.ts[i]);
+   drawTrack(pl,t);
+   if(t<maxT)requestAnimationFrame(frame);else res();
+  }
+  requestAnimationFrame(frame);
+ });
+}
+async function go(){
+ if(RC.phase!=='bet'||!RC.slip.length)return;
+ const tot=RC.slip.reduce((s,b)=>s+b.stake,0);
+ if(tot>chips()){toast('籌碼不夠');return}
+ RC.order=sampleOrder(RC.p);
+ let ret=0;RC.slip.forEach(b=>{b.win=wins(b.type,b.picks,RC.order);b.ret=b.win?Math.round(b.stake*b.odds):0;ret+=b.ret});
+ setChips(chips()-tot);pendSet(ret);RC.phase='run';RC.fin=[];setMsg('rcmsg','比賽開始！','');ctrl();sfx('launch');
+ await runRace(plan(RC.order));
+ if(ret>0)setChips(chips()+ret);
+ pendSet(0);
+ RC.phase='done';
+ const net=ret-tot,nm=i=>'#'+(i+1)+' '+RC.run[i].name;
+ setMsg('rcmsg','🥇 '+nm(RC.order[0])+'　🥈 '+nm(RC.order[1])+'　🥉 '+nm(RC.order[2])+'　　'+signed(net),net>0?'win':net<0?'lose':'push');
+ if(net>0)sfx('bonus');else sfx('drain');
+ slipHtml();ctrl();
+}
+function act(a){
+ if(RC.phase==='done'){if(a==='next'){newRace();drawTrack(null,0);setMsg('rcmsg','選好之後按「開跑」','');refresh()}return}
+ if(RC.phase!=='bet')return;
+ const ST=STEPS,i=ST.indexOf(RC.bet);
+ if(a==='dn'){if(i>0)RC.bet=ST[i-1];ctrl();return}
+ if(a==='up'){if(i<ST.length-1&&ST[i+1]<=chips())RC.bet=ST[i+1];else if(i<ST.length-1)toast('籌碼不夠再加');ctrl();return}
+ if(a==='skip'){RC.skip=!RC.skip;ctrl();return}
+ if(a==='clear'){RC.slip=[];refresh();return}
+ if(a==='go'){go();return}
+ if(a[0]==='t'&&a!=='tri_'){RC.type=a.slice(1);RC.picks=[];table();ctrl();return}
+ if(a==='add'){
+  const N=TYPES[RC.type].k;if(RC.picks.length!==N)return;
+  const tot=RC.slip.reduce((s,b)=>s+b.stake,0);
+  if(tot+RC.bet>chips()){toast('籌碼不夠');return}
+  if(RC.type==='tri'&&RC.bet>100){toast('三連單每注最多 100');return}
+  RC.slip.push({type:RC.type,picks:RC.picks.slice(),stake:RC.bet,odds:oddsFor(RC.type,RC.picks)});
+  RC.picks=[];sfx('chip');refresh();
+ }
+}
+function pickRow(i){
+ if(RC.phase!=='bet')return;
+ const N=TYPES[RC.type].k,k=RC.picks.indexOf(i);
+ if(k>=0)RC.picks.splice(k,1);
+ else if(RC.picks.length<N)RC.picks.push(i);
+ else if(N===1)RC.picks=[i];
+ else RC.picks=[i];
+ table();ctrl();
+}
+function openMode(mode){
+ RC.mode=mode;RC.skip=RC.skip||false;
+ if(RC.phase==='run')return;
+ newRace();
+ show('race');updateWallet();
+ $('#race-title').textContent=mode==='horse'?'賽馬 HORSE RACING':'賽車 GRAND PRIX';
+ const cv=$('#rccv');cv.width=720;cv.height=canvasH();
+ setMsg('rcmsg','選好之後按「開跑」','');
+ drawTrack(null,0);refresh();
+}
+
+/* ===== 組裝 ===== */
+function build(){
+ injectCss();
+ mk('race','賽事 RACING','PLACE YOUR BETS');
+ $('#race-felt').innerHTML='<div class="rchead" id="rchead"></div><canvas id="rccv" class="rccv" width="720" height="'+canvasH()+'"></canvas><div class="msg" id="rcmsg"></div><div id="rctable" style="width:100%;display:flex;justify-content:center"></div><div id="rcslip" style="width:100%;display:flex;justify-content:center"></div>';
+ $('#race-felt').addEventListener('click',e=>{
+  const r=e.target.closest('[data-r]');if(r){pickRow(+r.dataset.r);return}
+  const x=e.target.closest('[data-rm]');if(x&&RC.phase==='bet'){RC.slip.splice(+x.dataset.rm,1);refresh()}
+ });
+ $('#race-ctrl').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b)act(b.dataset.a)});
+ $('#race-back').addEventListener('click',()=>{if(RC.phase==='run'){toast('比賽進行中');return}home()});
+ const art=(bg,inner)=>'<div class="art" style="display:flex;align-items:center;justify-content:center;gap:6px;background:'+bg+';font-size:44px">'+inner+'</div>';
+ ZONES.racing={t:'賽事區',s:'RACING',games:()=>[
+  {cls:'slc',vars:'--ac:#7bd36a;--abg:linear-gradient(180deg,#1e4d1c,#0d2a0c)',art:art('linear-gradient(180deg,#1e4d1c,#0d2a0c)','<span style="display:inline-block;transform:scaleX(-1)">🐎</span><span style="display:inline-block;transform:scaleX(-1)">🐎</span><span style="display:inline-block;transform:scaleX(-1)">🐎</span>'),en:'HORSE RACING · 8 RUNNERS',h:'賽馬 HORSE RACING',p:'8 匹馬，看近況和場地適性，猜誰會贏。可以押第 1 名、前 2、前 3，或依序猜前兩名、前三名。',tags:['獨贏','位置','前三','連贏單','三連單'],price:['每注 5 ~ 1,000','三連單每注最多 100'],note:'所有押法理論回報率 92%',btn:'入場 ▶',go:()=>openMode('horse')},
+  {cls:'slc',vars:'--ac:#ff9f1c;--abg:linear-gradient(180deg,#2a2d38,#0d0f14)',art:art('linear-gradient(180deg,#2a2d38,#0d0f14)','<span style="font-size:30px;font-weight:900;color:#ff9f1c;letter-spacing:.1em">GP</span> <span style="display:inline-block;width:64px;height:24px;border-radius:8px;background:#e63946;box-shadow:0 0 14px #e63946"></span>'),en:'GRAND PRIX · 8 CARS',h:'賽車 GRAND PRIX',p:'8 台賽車，乾地或濕地，每台車有自己擅長的路面。看懂適性就更容易猜中。',tags:['乾濕路面','適性','近況'],price:['每注 5 ~ 1,000','三連單每注最多 100'],note:'所有押法理論回報率 92%',btn:'入場 ▶',go:()=>openMode('car')}
+ ]};
+ const hub=document.querySelector('.hub');
+ if(hub){
+  const bank=hub.querySelector('.t-bank');
+  const b=document.createElement('button');b.className='tile t-racing';
+  b.innerHTML='<div class="ti">🏁</div><div class="cnt">RACING</div><h2>賽事區</h2><p>賽馬・賽車<br>押名次、猜順序</p>';
+  b.addEventListener('click',()=>zoneOpen('racing'));
+  if(bank)hub.insertBefore(b,bank);else hub.appendChild(b);
+ }
+ updateWallet();
+}
+build();
+})();
+
 /* ---------- 大廳背景 ---------- */
 (function(){
  const c=$('#bg'),x=c.getContext('2d');let pts=[];
