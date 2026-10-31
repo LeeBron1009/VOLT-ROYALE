@@ -3407,6 +3407,446 @@ function build(){
 }
 build();
 })();
+ 
+/* ---------- 新分區：台灣彩券區（每天 17:00 全服同步開獎）---------- */
+(function(){
+const TEST_FAST=false;     // 測試用：true 的話，下注 20 秒後就開獎（用本機亂數，不是公開亂數）。正式上線一定要是 false
+const fmt=n=>Math.round(n).toLocaleString();
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+function comb(n,k){if(k<0||k>n)return 0;k=Math.min(k,n-k);let r=1;for(let i=1;i<=k;i++)r=r*(n-k+i)/i;return r}
+function sample(total,k,rand){const a=Array.from({length:total},(_,i)=>i+1);for(let i=0;i<k;i++){const j=i+Math.floor(rand()*(a.length-i));[a[i],a[j]]=[a[j],a[i]]}return a.slice(0,k)}
+const pad=n=>String(n).padStart(2,'0');
+
+/* ---------- SHA-256（純 JS，不依賴瀏覽器的安全環境）---------- */
+const K256=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+function sha256(str){
+ const enc=[];for(let i=0;i<str.length;i++){let c=str.charCodeAt(i);if(c<128)enc.push(c);else if(c<2048)enc.push(192|c>>6,128|c&63);else enc.push(224|c>>12,128|c>>6&63,128|c&63)}
+ const l=enc.length;enc.push(0x80);while(enc.length%64!==56)enc.push(0);
+ const hi=Math.floor(l*8/4294967296),lo=(l*8)>>>0;
+ enc.push(hi>>>24&255,hi>>>16&255,hi>>>8&255,hi&255,lo>>>24&255,lo>>>16&255,lo>>>8&255,lo&255);
+ let h=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+ const rotr=(x,n)=>(x>>>n)|(x<<(32-n));
+ for(let o=0;o<enc.length;o+=64){
+  const w=new Array(64);
+  for(let i=0;i<16;i++)w[i]=(enc[o+4*i]<<24|enc[o+4*i+1]<<16|enc[o+4*i+2]<<8|enc[o+4*i+3])>>>0;
+  for(let i=16;i<64;i++){const s0=rotr(w[i-15],7)^rotr(w[i-15],18)^(w[i-15]>>>3),s1=rotr(w[i-2],17)^rotr(w[i-2],19)^(w[i-2]>>>10);w[i]=(w[i-16]+s0+w[i-7]+s1)>>>0}
+  let [a,b,c,d,e,f,g,hh]=h;
+  for(let i=0;i<64;i++){
+   const S1=rotr(e,6)^rotr(e,11)^rotr(e,25),ch=(e&f)^(~e&g),t1=(hh+S1+ch+K256[i]+w[i])>>>0,S0=rotr(a,2)^rotr(a,13)^rotr(a,22),mj=(a&b)^(a&c)^(b&c),t2=(S0+mj)>>>0;
+   hh=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b;b=a;a=(t1+t2)>>>0;
+  }
+  h=[(h[0]+a)>>>0,(h[1]+b)>>>0,(h[2]+c)>>>0,(h[3]+d)>>>0,(h[4]+e)>>>0,(h[5]+f)>>>0,(h[6]+g)>>>0,(h[7]+hh)>>>0];
+ }
+ return h;      // 8 個 32 位元整數
+}
+function sfc32(a,b,c,d){return function(){a>>>=0;b>>>=0;c>>>=0;d>>>=0;let t=(a+b)|0;a=b^(b>>>9);b=(c+(c<<3))|0;c=(c<<21|c>>>11);d=(d+1)|0;t=(t+d)|0;c=(c+t)|0;return(t>>>0)/4294967296}}
+function seededRand(text){const h=sha256(text),r=sfc32(h[0],h[1],h[2],h[3]);for(let i=0;i<15;i++)r();return r}
+
+/* ---------- 時間：固定用台灣時間（UTC+8），每天 17:00 開獎 ---------- */
+const TZ=8*3600*1000;
+function tpDate(ms){const d=new Date(ms+TZ);return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())}
+function drawTime(day){const [y,m,d]=day.split('-').map(Number);return Date.UTC(y,m-1,d,9,0,0)}     // 台灣 17:00 = UTC 09:00
+function nextDay(day){return tpDate(drawTime(day)+86400000)}
+function ticketDay(nowMs){return nextDay(tpDate(nowMs))}                 // 今天買 → 明天 17:00 開獎
+function upcomingDraw(nowMs){const t=tpDate(nowMs);return nowMs<drawTime(t)?t:nextDay(t)}
+/* ---------- 公開亂數（drand quicknet）：全世界同一時間拿到同一組、事先沒有人猜得到 ---------- */
+const DR_GENESIS=1692803367,DR_PERIOD=3,DR_CHAIN='52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971';
+const DR_HOSTS=['https://api.drand.sh','https://drand.cloudflare.com','https://api2.drand.sh','https://api3.drand.sh'];
+const roundOf=day=>Math.floor((drawTime(day)/1000-DR_GENESIS)/DR_PERIOD)+1;
+async function fetchT(url,ms){const c=typeof AbortController!=='undefined'?new AbortController():null,t=setTimeout(()=>c&&c.abort(),ms||6000);try{return await fetch(url,c?{signal:c.signal}:{})}finally{clearTimeout(t)}}
+async function drand(round){
+ for(const h of DR_HOSTS){
+  try{const r=await fetchT(h+'/'+DR_CHAIN+'/public/'+round,6000);if(r.ok){const j=await r.json();if(j&&j.randomness)return j.randomness}}catch(e){}
+ }
+ return null;
+}
+
+/* ---------- 遊戲設定（倍數 = 單注價格的幾倍）---------- */
+const G={
+ lotto649:{name:'大樂透',en:'LOTTO 6/49',price:10,kind:'num',N:49,need:6,draw:6,sp:true,cols:7,
+  desc:'49 選 6，開 6 個號碼＋1 個特別號（特別號只有部分獎項看）',
+  tiers:[{n:'頭獎',c:'中 6 個',m:6,s:0,x:2000000},{n:'貳獎',c:'中 5 個＋特別號',m:5,s:1,x:100000},{n:'參獎',c:'中 5 個',m:5,s:0,x:3000},{n:'肆獎',c:'中 4 個＋特別號',m:4,s:1,x:800},{n:'伍獎',c:'中 4 個',m:4,s:0,x:150},{n:'陸獎',c:'中 3 個＋特別號',m:3,s:1,x:60},{n:'柒獎',c:'中 2 個＋特別號',m:2,s:1,x:15},{n:'普獎',c:'中 3 個',m:3,s:0,x:15}],
+  prob:(m,s)=>s?comb(6,m)*comb(42,5-m)/comb(49,6):comb(6,m)*comb(42,6-m)/comb(49,6)},
+ super638:{name:'威力彩',en:'SUPER LOTTO 6/38',price:20,kind:'num',N:38,need:6,draw:6,area2:8,cols:7,
+  desc:'第一區 38 選 6，加上第二區 8 選 1。第二區也要猜',
+  tiers:[{n:'頭獎',c:'第一區 6 個＋第二區',m:6,s:1,x:2000000},{n:'貳獎',c:'第一區 6 個',m:6,s:0,x:100000},{n:'參獎',c:'第一區 5 個＋第二區',m:5,s:1,x:9000},{n:'肆獎',c:'第一區 5 個',m:5,s:0,x:1500},{n:'伍獎',c:'第一區 4 個＋第二區',m:4,s:1,x:200},{n:'陸獎',c:'第一區 4 個',m:4,s:0,x:40},{n:'柒獎',c:'第一區 3 個＋第二區',m:3,s:1,x:14},{n:'捌獎',c:'第一區 2 個＋第二區',m:2,s:1,x:6},{n:'玖獎',c:'第一區 3 個',m:3,s:0,x:3},{n:'普獎',c:'第一區 1 個＋第二區',m:1,s:1,x:2.5}],
+  prob:(m,s)=>comb(6,m)*comb(32,6-m)/comb(38,6)*(s?1/8:7/8)},
+ daily539:{name:'今彩539',en:'DAILY CASH 5/39',price:10,kind:'num',N:39,need:5,draw:5,cols:7,
+  desc:'39 選 5，開 5 個號碼，猜中 2 個就有獎',
+  tiers:[{n:'頭獎',c:'中 5 個',m:5,s:0,x:250000},{n:'貳獎',c:'中 4 個',m:4,s:0,x:650},{n:'參獎',c:'中 3 個',m:3,s:0,x:9},{n:'肆獎',c:'中 2 個',m:2,s:0,x:1.5}],
+  prob:(m)=>comb(5,m)*comb(34,5-m)/comb(39,5)},
+ win24:{name:'雙贏彩',en:'WIN WIN 12/24',price:10,kind:'num',N:24,need:12,draw:12,fold:true,cols:6,
+  desc:'24 選 12，開 12 個。猜中越多有獎，「全部猜錯」也有獎！',
+  tiers:[{n:'頭獎',c:'全中 12 個，或全不中',m:0,s:0,x:100000},{n:'貳獎',c:'中 11 個，或只中 1 個',m:1,s:0,x:1500},{n:'參獎',c:'中 10 個，或只中 2 個',m:2,s:0,x:60},{n:'肆獎',c:'中 9 個，或只中 3 個',m:3,s:0,x:6},{n:'伍獎',c:'中 8 個，或只中 4 個',m:4,s:0,x:1.3}],
+  prob:(m)=>2*comb(12,m)*comb(12,m)/comb(24,12)},
+ m39:{name:'39樂合彩',en:'39 COMBO',price:5,kind:'num',combo:true,N:39,draw:5,ks:[2,3,4],cols:7,base:'今彩539 的 5 個號碼',
+  desc:'用今彩539 開出的 5 個號碼對獎。你選 2、3 或 4 個，全部都在裡面才中獎',
+  tiers:[{n:'二合',c:'選 2 個全中',k:2,x:66},{n:'三合',c:'選 3 個全中',k:3,x:820},{n:'四合',c:'選 4 個全中',k:4,x:14800}]},
+ m49:{name:'49樂合彩',en:'49 COMBO',price:5,kind:'num',combo:true,N:49,draw:6,ks:[2,3,4],cols:7,base:'大樂透的 6 個號碼（不含特別號）',
+  desc:'用大樂透開出的 6 個號碼（不含特別號）對獎。選 2、3 或 4 個全中才有獎',
+  tiers:[{n:'二合',c:'選 2 個全中',k:2,x:70},{n:'三合',c:'選 3 個全中',k:3,x:825},{n:'四合',c:'選 4 個全中',k:4,x:12700}]},
+ m38:{name:'38樂合彩',en:'38 COMBO',price:5,kind:'num',combo:true,N:38,draw:6,ks:[2,3,4,5],cols:7,base:'威力彩第一區的 6 個號碼',
+  desc:'用威力彩第一區的 6 個號碼對獎。選 2 到 5 個，全中才有獎',
+  tiers:[{n:'二合',c:'選 2 個全中',k:2,x:42},{n:'三合',c:'選 3 個全中',k:3,x:380},{n:'四合',c:'選 4 個全中',k:4,x:4400},{n:'五合',c:'選 5 個全中',k:5,x:75000}]},
+ star3:{name:'三星彩',en:'3 STAR',price:10,kind:'digit',D:3,
+  desc:'0 到 9 各選一個數字，開出 3 個數字。有正彩（位置全對）、組彩（數字對、順序不限）、對彩（猜最後兩碼）',
+  modes:{zheng:{n:'正彩',c:'3 個數字、位置都對',x:900},zu:{n:'組彩',c:'3 個數字都對，順序不限',x:900},dui:{n:'對彩',c:'最後 2 碼都對（位置也要對）',x:90}}},
+ star4:{name:'四星彩',en:'4 STAR',price:10,kind:'digit',D:4,
+  desc:'0 到 9 各選一個數字，開出 4 個數字。有正彩（位置全對）、組彩（數字對、順序不限）、對彩（猜最後兩碼）',
+  modes:{zheng:{n:'正彩',c:'4 個數字、位置都對',x:9000},zu:{n:'組彩',c:'4 個數字都對，順序不限',x:9000},dui:{n:'對彩',c:'最後 2 碼都對（位置也要對）',x:90}}}
+};
+function perms(d){const c={};d.forEach(x=>c[x]=(c[x]||0)+1);let p=1;for(let i=2;i<=d.length;i++)p*=i;Object.keys(c).forEach(k=>{for(let i=2;i<=c[k];i++)p/=i});return p}
+const MAXL=10;
+/* ---------- 由亂數產生開獎號碼（每個玩家算出來都一樣）---------- */
+function makeResult(g,rnd,key){
+ const r=seededRand(rnd+'|'+key);
+ if(g.kind==='digit')return{digits:Array.from({length:g.D},()=>Math.floor(r()*10))};
+ const nums=sample(g.N,g.draw+(g.sp?1:0),r);
+ return{main:nums.slice(0,g.draw).sort((a,b)=>a-b),special:g.sp?nums[g.draw]:0,a2:g.area2?1+Math.floor(r()*g.area2):0};
+}
+function judge(g,line,res){
+ if(g.kind==='digit'){
+  const d=res.digits,m=line.mode,x=g.modes[m];
+  if(m==='zheng')return line.digits.every((v,i)=>v===d[i])?{n:x.n,mult:x.x}:null;
+  if(m==='dui')return (line.digits[0]===d[g.D-2]&&line.digits[1]===d[g.D-1])?{n:x.n,mult:x.x}:null;
+  const a=line.digits.slice().sort().join(''),b=d.slice().sort().join('');
+  return a===b?{n:x.n,mult:x.x/perms(line.digits)}:null;
+ }
+ const set=new Set(res.main);
+ if(g.combo){const k=line.nums.length;if(!line.nums.every(n=>set.has(n)))return null;const t=g.tiers.find(t=>t.k===k);return t?{n:t.n,mult:t.x}:null}
+ let m=line.nums.filter(n=>set.has(n)).length;
+ if(g.fold)m=Math.min(m,12-m);
+ let s=0;
+ if(g.sp)s=line.nums.indexOf(res.special)>=0?1:0;
+ if(g.area2)s=line.a2===res.a2?1:0;
+ const t=g.tiers.find(t=>t.m===m&&t.s===s);
+ return t?{n:t.n,mult:t.x}:null;
+}
+/* ---------- 彩券與開獎（存在本機，開獎時間一到自動對獎）---------- */
+const tickets=()=>store.get('twt',[]);
+const results=()=>store.get('twr',{});
+async function getResult(game,day){
+ const key=game+'|'+day,cache=results();
+ if(cache[key])return cache[key];
+ let rnd=null,round=0;
+ if(TEST_FAST){rnd='TEST|'+key}
+ else{round=roundOf(day);rnd=await drand(round)}
+ if(!rnd)return null;
+ const res=makeResult(G[game],rnd,game);res.round=round;res.rnd=String(rnd).slice(0,12);res.day=day;
+ const c2=results();c2[key]=res;
+ const ks=Object.keys(c2);if(ks.length>90){ks.sort((a,b)=>a.split('|')[1]<b.split('|')[1]?-1:1);ks.slice(0,ks.length-90).forEach(k=>delete c2[k])}
+ store.set('twr',c2);return res;
+}
+const S={g:null,key:'',picks:[],a2:0,mode:'zheng',k:2,digits:[],lines:[],last:null,skip:false,busy:false,prac:null};
+let settling=false;
+async function settleAll(silent){
+ if(settling)return;settling=true;
+ try{
+  let won=0,cnt=0;
+  const ids=tickets().filter(t=>!t.done).map(t=>t.id);
+  for(const id of ids){
+   const tk=tickets().find(t=>t.id===id);if(!tk||tk.done)continue;
+   const due=TEST_FAST?(Date.now()-tk.t>=20000):(Date.now()>=drawTime(tk.day)+15000);
+   if(!due)continue;
+   const res=await getResult(tk.game,tk.day);if(!res)continue;
+   const g=G[tk.game];
+   const out=tk.lines.map(l=>{const h=judge(g,l,res);return{hit:h&&{n:h.n,mult:h.mult},ret:h?Math.round(h.mult*tk.price):0}});
+   const total=out.reduce((s,o)=>s+o.ret,0);
+   const all=tickets(),cur=all.find(t=>t.id===id);if(!cur||cur.done)continue;
+   cur.done=true;cur.out=out;cur.total=total;store.set('twt',all);       // 先標記已對獎，再發獎，避免重複領
+   if(total>0)setChips(chips()+total);
+   won+=total;cnt++;
+  }
+  if(cnt){
+   if(!silent||won>0)toast('🎫 '+cnt+' 張彩券已開獎'+(won>0?'，中獎 +'+fmt(won)+' 籌碼！':'，這次沒中'));
+   if(S.g&&typeof scr!=='undefined'&&scr==='tw')all_();
+  }
+ }catch(e){}
+ finally{settling=false}
+}
+
+/* ---------- 畫面 ---------- */
+function injectCss(){
+ if(!document.head)return;
+ const st=document.createElement('style');
+ st.textContent=`
+.t-taiwan{border-color:rgba(255,92,92,.65);box-shadow:0 0 34px rgba(255,92,92,.22);background:linear-gradient(160deg,rgba(130,20,30,.62),rgba(12,16,34,.85))}.t-taiwan .ti{color:#ff6b6b}
+.tile:hover.t-taiwan{box-shadow:0 0 46px rgba(255,92,92,.5)}
+.felt.bscroll{justify-content:flex-start;gap:10px;overflow-y:auto}.felt.bscroll::after,.felt.bscroll::before{display:none}
+#tw-ctrl{max-height:46vh;overflow-y:auto}
+.twh{z-index:1;text-align:center;font-weight:800;letter-spacing:.05em}.twh small{display:block;font-weight:600;opacity:.85;letter-spacing:0;margin-top:3px}
+.twcd{z-index:1;text-align:center;padding:8px 14px;border-radius:12px;background:rgba(0,0,0,.35);border:1px solid rgba(255,209,102,.4);font-size:13px}
+.twcd b{color:var(--gold);font-size:18px;font-variant-numeric:tabular-nums}
+.twd{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;z-index:1;min-height:44px;align-items:center}
+.ball{width:38px;height:38px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:900;font-size:16px;color:#111;background:radial-gradient(circle at 35% 30%,#fff,#ffd166 60%,#c8871a);box-shadow:0 3px 8px rgba(0,0,0,.5)}
+.ball.sp{background:radial-gradient(circle at 35% 30%,#fff,#ff6b6b 60%,#a01020);color:#fff}
+.ball.dg{border-radius:10px;font-size:22px;width:44px;height:48px}
+.twg{display:grid;grid-template-columns:repeat(var(--nc),var(--ns));gap:4px;z-index:1;justify-content:center}
+.twb{width:var(--ns);height:var(--ns);border-radius:8px;border:1px solid rgba(255,255,255,.3);background:rgba(0,0,0,.3);color:#fff;font-weight:800;font-size:calc(var(--ns)*.4);padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.twb.pk{background:#ffd166;color:#221400;border-color:#fff}.twb.a2.pk{background:#ff6b6b;color:#fff}
+.twcols{display:flex;gap:8px;justify-content:center;z-index:1}
+.twcol{display:grid;grid-template-columns:repeat(2,38px);gap:4px}
+.twtk{width:100%;max-width:560px;z-index:1;font-size:13px}
+.twl{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;background:rgba(0,0,0,.3);margin-bottom:4px;cursor:default}
+.twl.click{cursor:pointer}.twl.win{background:rgba(77,255,166,.16)}.twl b.h{color:#4dffa6}
+.twl button{background:none;border:0;color:#ff8fa1;font-size:16px;cursor:pointer}
+.opt{padding:8px 12px;border-radius:999px;border:1px solid var(--gold);background:rgba(255,209,102,.08);color:var(--gold);font-weight:800;font-size:13px}.opt.on{background:var(--gold);color:#221400}
+`;
+ document.head.appendChild(st);
+}
+function mk(id,title,t){
+ const d=document.createElement('div');d.id=id;d.className='tbl';
+ d.innerHTML='<div class="bjbar"><button class="ib" id="'+id+'-back">⌂</button><div class="t" id="'+id+'-title">'+title+'</div><div style="display:flex;gap:8px;align-items:center"><div class="wchip">⚡<b class="w-chips">0</b></div><button class="ib bankbtn" data-openbank style="width:auto;padding:0 10px">🏦</button></div></div><div class="felt bscroll" id="'+id+'-felt" data-t="'+t+'"></div><div class="ctrl" id="'+id+'-ctrl"></div>';
+ document.body.appendChild(d);TBLS.push(id);
+ const ob=d.querySelector('[data-openbank]');if(ob)ob.addEventListener('click',()=>openBank());
+ return d;
+}
+function setMsg(t,c){const e=$('#twmsg');if(e){e.textContent=t;e.className='msg '+(c||'')}}
+function need(){const g=S.g;return g.combo?S.k:g.need}
+function lineOk(){
+ const g=S.g;
+ if(g.kind==='digit'){const n=S.mode==='dui'?2:g.D;return S.digits.length===n&&S.digits.every(v=>v!=null)}
+ if(S.picks.length!==need())return false;
+ if(g.area2&&!S.a2)return false;
+ return true;
+}
+const dayText=d=>d+' 17:00';
+function head(){
+ const g=S.g;
+ $('#twhead').innerHTML=g.name+' <small>每注 '+g.price+' 籌碼　每天 17:00（台灣時間）開獎</small><small>'+g.desc+'</small>';
+}
+function countdown(){
+ const e=$('#twcd');if(!e)return;
+ const now=Date.now(),up=upcomingDraw(now),left=Math.max(0,drawTime(up)-now);
+ const h=Math.floor(left/3600000),m=Math.floor(left%3600000/60000),s=Math.floor(left%60000/1000);
+ e.innerHTML='距離下次開獎（'+dayText(up)+'）還有 <b>'+pad(h)+':'+pad(m)+':'+pad(s)+'</b><br><small style="opacity:.85">現在買的彩券，會在 '+dayText(ticketDay(now))+' 開獎。所有玩家開出的號碼完全一樣。</small>';
+}
+function latest(game){
+ const c=results(),ks=Object.keys(c).filter(k=>k.indexOf(game+'|')===0).sort();
+ return ks.length?c[ks[ks.length-1]]:null;
+}
+function drawArea(res,upto,label){
+ const g=S.g;let h='';
+ if(!res){$('#twdraw').innerHTML='<span class="hint">還沒有開獎紀錄。第一次開獎後，號碼會顯示在這裡</span>';return}
+ const total=g.kind==='digit'?g.D:g.draw;if(upto==null)upto=total;
+ if(g.kind==='digit')res.digits.slice(0,upto).forEach(d=>{h+='<span class="ball dg">'+d+'</span>'});
+ else{
+  res.main.slice(0,upto).forEach(n=>{h+='<span class="ball">'+pad(n)+'</span>'});
+  if(upto>=total){
+   if(g.sp)h+='<span class="ball sp" title="特別號">'+pad(res.special)+'</span>';
+   if(g.area2)h+='<span class="ball sp" title="第二區">'+pad(res.a2)+'</span>';
+  }
+ }
+ const cap=label||('最新開獎：'+res.day+(res.round?'　公開亂數 drand 第 '+res.round+' 回合':''));
+ $('#twdraw').innerHTML='<div style="width:100%;text-align:center;font-size:12px;opacity:.85">'+cap+'</div>'+h;
+}
+function pickArea(){
+ const g=S.g;let h='';
+ if(g.kind==='digit'){
+  h+='<div class="row" style="justify-content:center;z-index:1">'+Object.keys(g.modes).map(m=>'<button class="opt'+(S.mode===m?' on':'')+'" data-tw="m:'+m+'">'+g.modes[m].n+'</button>').join('')+'</div>';
+  const n=S.mode==='dui'?2:g.D;
+  h+='<div class="hint" style="z-index:1;text-align:center">'+g.modes[S.mode].c+'</div><div class="twcols">';
+  for(let c=0;c<n;c++){
+   h+='<div><div class="mini" style="text-align:center">'+(S.mode==='dui'?(c===0?'倒數第 2 碼':'最後 1 碼'):'第 '+(c+1)+' 碼')+'</div><div class="twcol">';
+   for(let d=0;d<10;d++)h+='<button class="twb'+(S.digits[c]===d?' pk':'')+'" style="--ns:38px" data-tw="d:'+c+':'+d+'">'+d+'</button>';
+   h+='</div></div>';
+  }
+  h+='</div>';
+ }else{
+  const fw=($('#tw-felt').clientWidth||360)-30,ns=Math.max(30,Math.min(46,Math.floor((Math.min(fw,460)-(g.cols-1)*4)/g.cols)));
+  if(g.combo)h+='<div class="row" style="justify-content:center;z-index:1;align-items:center"><span class="mini">選幾個</span>'+g.ks.map(k=>'<button class="opt'+(S.k===k?' on':'')+'" data-tw="k:'+k+'">'+['','','二合','三合','四合','五合'][k]+'</button>').join('')+'</div>';
+  h+='<div class="hint" style="z-index:1;text-align:center">'+(g.area2?'第一區選 '+g.need+' 個':'選 '+need()+' 個')+'　已選 '+S.picks.length+'</div>';
+  h+='<div class="twg" style="--nc:'+g.cols+';--ns:'+ns+'px">';
+  for(let n=1;n<=g.N;n++)h+='<button class="twb'+(S.picks.indexOf(n)>=0?' pk':'')+'" data-tw="n:'+n+'">'+n+'</button>';
+  h+='</div>';
+  if(g.area2){
+   h+='<div class="hint" style="z-index:1;text-align:center;margin-top:6px">第二區選 1 個</div><div class="twg" style="--nc:8;--ns:'+Math.min(40,ns)+'px">';
+   for(let n=1;n<=g.area2;n++)h+='<button class="twb a2'+(S.a2===n?' pk':'')+'" data-tw="a:'+n+'">'+n+'</button>';
+   h+='</div>';
+  }
+ }
+ $('#twpick').innerHTML=h;
+}
+function lineText(g,l){
+ if(g.kind==='digit')return g.modes[l.mode].n+'　'+l.digits.join(' ');
+ return l.nums.slice().sort((a,b)=>a-b).map(pad).join(' ')+(g.area2?'　第二區 '+pad(l.a2):'');
+}
+function editor(){
+ const g=S.g;
+ if(!S.lines.length){$('#twticket').innerHTML='<div class="hint" style="text-align:center">下方「待下注」還沒有號碼。選好號碼按「加入這一注」，或按「機選」</div>';return}
+ $('#twticket').innerHTML='<div class="twtk"><div class="mini" style="margin:2px 0 4px">待下注（還沒付錢）</div>'+S.lines.map((l,i)=>'<div class="twl"><span>'+(i+1)+'. '+lineText(g,l)+'</span><button data-tw="rm:'+i+'">✕</button></div>').join('')+'<div class="hint" style="text-align:center">共 '+S.lines.length+' 注　'+fmt(S.lines.length*g.price)+' 籌碼</div></div>';
+}
+function mine(){
+ const list=tickets().filter(t=>t.game===S.key).slice().reverse().slice(0,8);
+ if(!list.length){$('#twmine').innerHTML='';return}
+ $('#twmine').innerHTML='<div class="twtk"><div class="mini" style="margin:2px 0 4px">我買過的彩券（點一下看詳細）</div>'+list.map(t=>{
+  const st=t.done?(t.total>0?'<b class="h">中獎 +'+fmt(t.total)+'</b>':'<span style="opacity:.6">沒中</span>'):'<span style="color:var(--gold)">'+dayText(t.day).slice(5)+' 開獎</span>';
+  return '<div class="twl click'+(t.done&&t.total>0?' win':'')+'" data-tw="tk:'+t.id+'"><span>'+t.lines.length+' 注　'+t.day.slice(5)+' 期</span>'+st+'</div>';
+ }).join('')+'</div>';
+}
+function ticketModal(id){
+ const t=tickets().find(x=>x.id===id);if(!t)return;
+ const g=G[t.game],res=results()[t.game+'|'+t.day];
+ let h='<div class="panel"><h2>'+g.name+'　'+t.day+' 期</h2><div class="hint">'+t.lines.length+' 注 × '+t.price+' = '+fmt(t.lines.length*t.price)+' 籌碼　'+(t.done?'已開獎':'將於 '+dayText(t.day)+' 開獎')+'</div>';
+ if(res){
+  let b='';
+  if(g.kind==='digit')b=res.digits.map(d=>'<span class="ball dg">'+d+'</span>').join('');
+  else b=res.main.map(n=>'<span class="ball">'+pad(n)+'</span>').join('')+(g.sp?'<span class="ball sp">'+pad(res.special)+'</span>':'')+(g.area2?'<span class="ball sp">'+pad(res.a2)+'</span>':'');
+  h+='<div class="twd" style="margin:8px 0">'+b+'</div>'+(res.round?'<div class="hint">drand quicknet 第 '+res.round+' 回合（可在 api.drand.sh 自己驗證）</div>':'');
+ }
+ h+='<div class="twtk" style="text-align:left">'+t.lines.map((l,i)=>{
+  const o=t.out&&t.out[i];
+  return '<div class="twl'+(o&&o.hit?' win':'')+'"><span>'+(i+1)+'. '+lineText(g,l)+'</span>'+(o?(o.hit?'<b class="h">'+o.hit.n+' +'+fmt(o.ret)+'</b>':'<span style="opacity:.6">沒中</span>'):'<span style="opacity:.6">待開獎</span>')+'</div>';
+ }).join('')+'</div>'+(t.done?'<div class="hint">這張彩券總共得到 '+fmt(t.total||0)+' 籌碼</div>':'')+'<div class="btns"><button class="btn" data-bank="close">關閉</button></div></div>';
+ openModal(h);
+}
+function allMine(){
+ const list=tickets().slice().reverse().slice(0,30);
+ let h='<div class="panel"><h2>🎫 我的彩券</h2><div class="hint">待開獎的彩券，會在開獎時間一到自動對獎、自動把獎金加到籌碼。</div><div class="twtk" style="text-align:left;margin:0 auto">';
+ h+=list.length?list.map(t=>{
+  const st=t.done?(t.total>0?'<b class="h">+'+fmt(t.total)+'</b>':'<span style="opacity:.6">沒中</span>'):'<span style="color:var(--gold)">'+dayText(t.day).slice(5)+'</span>';
+  return '<div class="twl click'+(t.done&&t.total>0?' win':'')+'" data-tw="tk:'+t.id+'"><span>'+G[t.game].name+'　'+t.lines.length+' 注　'+t.day.slice(5)+' 期</span>'+st+'</div>';
+ }).join(''):'<div class="hint">還沒有買過彩券</div>';
+ h+='</div><div class="btns"><button class="btn" data-tw="settle">立刻檢查開獎</button><button class="btn" data-bank="close">關閉</button></div></div>';
+ openModal(h);
+}
+function ctrl(){
+ const g=S.g,cost=S.lines.length*g.price,left=MAXL-S.lines.length,pend=tickets().filter(t=>!t.done).length;
+ $('#tw-ctrl').innerHTML=
+ '<div class="betline">待下注 '+S.lines.length+' 注 × '+g.price+' = <b>'+fmt(cost)+'</b>　<span style="opacity:.7">籌碼 '+fmt(chips())+'</span></div>'+
+ '<div class="row"><button class="btn gold" data-tw="add"'+((S.busy||!lineOk()||left<=0)?' disabled':'')+'>加入這一注</button><button class="btn" data-tw="q1"'+((S.busy||left<1)?' disabled':'')+'>機選 1 注</button><button class="btn" data-tw="q5"'+((S.busy||left<1)?' disabled':'')+'>機選 5 注</button></div>'+
+ '<div class="row"><button class="btn" data-tw="again"'+((S.busy||!S.last||S.lines.length)?' disabled':'')+'>重複上次號碼</button><button class="btn" data-tw="clear"'+((S.busy||!S.lines.length)?' disabled':'')+'>清除</button><button class="btn" data-tw="info">獎項表</button></div>'+
+ '<div class="row"><button class="btn" data-tw="mine">🎫 我的彩券'+(pend?'（'+pend+' 張待開獎）':'')+'</button><button class="btn" data-tw="prac"'+(S.busy?' disabled':'')+'>練習開獎</button><button class="btn gold spinbtn" data-tw="buy"'+((S.busy||!S.lines.length||cost>chips())?' disabled':'')+'>下注 ▶</button></div>';
+}
+function all_(){head();countdown();drawArea(latest(S.key),null);pickArea();editor();mine();ctrl()}
+
+/* ---------- 動作 ---------- */
+function randLine(){
+ const g=S.g,r=Math.random;
+ if(g.kind==='digit'){const n=S.mode==='dui'?2:g.D;return{mode:S.mode,digits:Array.from({length:n},()=>Math.floor(r()*10))}}
+ return{nums:sample(g.N,need(),r),a2:g.area2?1+Math.floor(r()*g.area2):0};
+}
+function info(){
+ const g=S.g;let rows='',rtp=0;
+ if(g.kind==='digit'){
+  const N=Math.pow(10,g.D);
+  rows=Object.keys(g.modes).map(m=>{const x=g.modes[m];
+   if(m==='zu'){const per=g.D===3?[[6,'三碼都不同'],[3,'有兩碼相同'],[1,'三碼一樣']]:[[24,'四碼都不同'],[12,'有一組相同'],[6,'兩組相同'],[4,'有三碼相同'],[1,'四碼一樣']];
+    return per.map(([p,t])=>'<tr><td>'+x.n+'（'+t+'）</td><td>'+p+'/'+N+'</td><td>×'+Math.round(x.x/p*100)/100+'</td><td>'+fmt(x.x/p*g.price)+'</td></tr>').join('')}
+   return '<tr><td>'+x.n+'</td><td>1/'+(m==='dui'?100:N)+'</td><td>×'+x.x+'</td><td>'+fmt(x.x*g.price)+'</td></tr>'}).join('');
+  rtp=0.9;
+ }else if(g.combo){
+  rows=g.tiers.map(t=>{const p=comb(g.N-t.k,g.draw-t.k)/comb(g.N,g.draw);return '<tr><td>'+t.n+'</td><td>1/'+fmt(1/p)+'</td><td>×'+t.x+'</td><td>'+fmt(t.x*g.price)+'</td></tr>'}).join('');
+  rtp=g.tiers.reduce((s,t)=>s+comb(g.N-t.k,g.draw-t.k)/comb(g.N,g.draw)*t.x,0)/g.tiers.length;
+ }else{
+  rows=g.tiers.map(t=>{const p=g.prob(t.m,t.s);rtp+=p*t.x;return '<tr><td>'+t.n+'<br><small style="opacity:.7">'+t.c+'</small></td><td>1/'+fmt(1/p)+'</td><td>×'+t.x+'</td><td>'+fmt(t.x*g.price)+'</td></tr>'}).join('');
+ }
+ openModal('<div class="panel"><h2>'+g.name+' 獎項表</h2><div class="hint">'+g.desc+(g.base?'<br>對獎依據：'+g.base:'')+'<br>每一注的理論回報率約 '+(rtp*100).toFixed(0)+'%。</div><div style="overflow-x:auto"><table style="min-width:0;margin-top:8px"><tr><th>獎項</th><th>機率</th><th>倍數</th><th>獎金(籌碼)</th></tr>'+rows+'</table></div><div class="btns"><button class="btn" data-bank="close">關閉</button></div></div>');
+}
+async function practice(){
+ if(S.busy)return;const g=S.g;
+ const r=Math.random,res=g.kind==='digit'?{digits:Array.from({length:g.D},()=>Math.floor(r()*10))}:(()=>{const nums=sample(g.N,g.draw+(g.sp?1:0),r);return{main:nums.slice(0,g.draw).sort((a,b)=>a-b),special:g.sp?nums[g.draw]:0,a2:g.area2?1+Math.floor(r()*g.area2):0}})();
+ S.busy=true;ctrl();setMsg('練習開獎中⋯（不扣籌碼、也不給獎金）','');sfx('launch');
+ const total=g.kind==='digit'?g.D:g.draw;
+ for(let i=1;i<=total;i++){drawArea(res,i,'練習開獎（不是正式開獎）');sfx('card');await wait(i<=2?450:320)}
+ await wait(200);
+ const lines=S.lines.length?S.lines:[randLine()];
+ let ret=0,hits=0;lines.forEach(l=>{const h=judge(g,l,res);if(h){hits++;ret+=Math.round(h.mult*g.price)}});
+ setMsg('練習結果：'+lines.length+' 注中 '+hits+' 注，如果是正式開獎可得 '+fmt(ret)+' 籌碼',hits?'win':'push');
+ S.busy=false;ctrl();
+}
+function buy(){
+ const g=S.g;if(S.busy||!S.lines.length)return;
+ const cost=S.lines.length*g.price;
+ if(cost>chips()){openBank('籌碼不足。');return}
+ const all=tickets();
+ if(all.filter(t=>!t.done).length>=60){toast('待開獎的彩券太多了，先等開獎');return}
+ const day=ticketDay(Date.now());
+ setChips(chips()-cost);
+ all.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),game:S.key,day,lines:S.lines.map(l=>JSON.parse(JSON.stringify(l))),price:g.price,t:Date.now(),done:false});
+ while(all.length>150){const i=all.findIndex(t=>t.done);if(i<0)break;all.splice(i,1)}
+ store.set('twt',all);
+ S.last=S.lines.map(l=>JSON.parse(JSON.stringify(l)));S.lines=[];S.picks=[];S.a2=0;S.digits=[];
+ sfx('chip');toast('已下注！'+dayText(day)+' 開獎，記得回來看結果');
+ setMsg('已下注 '+fmt(cost)+' 籌碼，'+dayText(day)+' 開獎','win');
+ all_();
+}
+function act(a){
+ const g=S.g;
+ if(a==='info'){info();return}
+ if(a==='mine'){allMine();return}
+ if(a==='settle'){settleAll(false);return}
+ if(a.indexOf('tk:')===0){ticketModal(a.slice(3));return}
+ if(a==='prac'){practice();return}
+ if(S.busy)return;
+ if(a==='buy'){buy();return}
+ if(a.indexOf('m:')===0){S.mode=a.slice(2);S.digits=[];pickArea();ctrl();return}
+ if(a.indexOf('k:')===0){S.k=+a.slice(2);S.picks=[];pickArea();ctrl();return}
+ if(a.indexOf('d:')===0){const [,c,d]=a.split(':');S.digits[+c]=+d;pickArea();ctrl();return}
+ if(a.indexOf('a:')===0){S.a2=+a.slice(2);pickArea();ctrl();return}
+ if(a.indexOf('n:')===0){
+  const n=+a.slice(2),i=S.picks.indexOf(n);
+  if(i>=0)S.picks.splice(i,1);else if(S.picks.length<need())S.picks.push(n);else{toast('這一注最多選 '+need()+' 個');return}
+  pickArea();ctrl();return;
+ }
+ if(a.indexOf('rm:')===0){S.lines.splice(+a.slice(3),1);editor();ctrl();return}
+ if(a==='clear'){S.lines=[];editor();ctrl();return}
+ if(a==='again'){if(S.last&&!S.lines.length){S.lines=S.last.map(l=>JSON.parse(JSON.stringify(l)));editor();ctrl()}return}
+ if(a==='add'){
+  if(!lineOk()||S.lines.length>=MAXL)return;
+  S.lines.push(g.kind==='digit'?{mode:S.mode,digits:S.digits.slice(0,S.mode==='dui'?2:g.D)}:{nums:S.picks.slice(),a2:S.a2});
+  sfx('chip');S.picks=[];S.a2=0;S.digits=[];pickArea();editor();ctrl();return;
+ }
+ if(a==='q1'||a==='q5'){const n=Math.min(a==='q1'?1:5,MAXL-S.lines.length);for(let i=0;i<n;i++)S.lines.push(randLine());sfx('chip');editor();ctrl()}
+}
+function openGame(key){
+ S.g=G[key];S.key=key;S.picks=[];S.a2=0;S.digits=[];S.lines=[];S.busy=false;S.mode='zheng';S.k=S.g.combo?S.g.ks[0]:0;
+ show('tw');updateWallet();$('#tw-title').textContent=S.g.name+' '+S.g.en;
+ setMsg('選號碼，或按「機選」。下注後等 17:00 開獎','');all_();
+ settleAll(true);
+}
+
+/* ---------- 組裝 ---------- */
+function build(){
+ injectCss();
+ mk('tw','台灣彩券','LOTTERY');
+ $('#tw-felt').innerHTML='<div class="twh" id="twhead"></div><div class="twcd" id="twcd"></div><div class="twd" id="twdraw"></div><div class="msg" id="twmsg"></div><div id="twpick" style="width:100%"></div><div id="twticket" style="width:100%;display:flex;justify-content:center"></div><div id="twmine" style="width:100%;display:flex;justify-content:center"></div>';
+ $('#tw-felt').addEventListener('click',e=>{const b=e.target.closest('[data-tw]');if(b)act(b.dataset.tw)});
+ $('#tw-ctrl').addEventListener('click',e=>{const b=e.target.closest('[data-tw]');if(b)act(b.dataset.tw)});
+ $('#modal').addEventListener('click',e=>{const b=e.target.closest('[data-tw]');if(b)act(b.dataset.tw)});
+ $('#tw-back').addEventListener('click',()=>{if(S.busy){toast('等練習開獎結束');return}home()});
+ const ball=(t,c)=>'<span style="width:34px;height:34px;border-radius:50%;background:'+c+';color:#111;display:inline-flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;box-shadow:0 3px 8px rgba(0,0,0,.5)">'+t+'</span>';
+ const dg=t=>'<span style="width:34px;height:42px;border-radius:9px;background:#fff;color:#c1121f;display:inline-flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;box-shadow:0 3px 8px rgba(0,0,0,.5)">'+t+'</span>';
+ const art=(bg,inner)=>'<div class="art" style="display:flex;align-items:center;justify-content:center;gap:5px;background:'+bg+';padding:8px;flex-wrap:wrap">'+inner+'</div>';
+ const gold='radial-gradient(circle at 35% 30%,#fff,#ffd166 60%,#c8871a)',red='radial-gradient(circle at 35% 30%,#fff,#ff6b6b 60%,#a01020)';
+ const mkcard=(key,vars,bg,inner,en,p,tags,price,note)=>({cls:'slc',vars:vars,art:art(bg,inner),en:en,h:G[key].name+' '+G[key].en,p:p,tags:tags,price:price,note:note,btn:'投注 ▶',go:()=>openGame(key)});
+ ZONES.taiwan={t:'台灣彩券區',s:'TAIWAN LOTTERY（模擬）・每天 17:00 開獎',games:()=>[
+  mkcard('lotto649','--ac:#ff6b6b;--abg:#2a0d12','#2a0d12',ball('07',gold)+ball('18',gold)+ball('23',gold)+ball('31',gold)+ball('40',gold)+ball('46',red),'6 / 49 + 特別號','49 選 6，另開特別號。頭獎要全中 6 個，最小的「普獎」中 3 個就有。',['49 選 6','特別號','8 種獎項'],['每注 10','頭獎 2,000,000×'],'理論回報率約 92%'),
+  mkcard('super638','--ac:#7b6cf6;--abg:#1d1140','#1d1140',ball('03',gold)+ball('11',gold)+ball('16',gold)+ball('26',gold)+ball('37',gold)+ball('06',gold)+ball('01',red),'6 / 38 + 第二區 1 / 8','兩個區：第一區 38 選 6，第二區 8 選 1。只中第二區也有「普獎」。',['兩個區','10 種獎項','第二區也要猜'],['每注 20','頭獎 2,000,000×'],'理論回報率約 89%'),
+  mkcard('daily539','--ac:#ffd166;--abg:#2a1c00','#2a1c00',ball('05',gold)+ball('12',gold)+ball('19',gold)+ball('27',gold)+ball('33',gold),'5 / 39','39 選 5，猜中 2 個就有獎，是最容易中的一款。',['39 選 5','中 2 個有獎','每天可玩'],['每注 10','頭獎 250,000×'],'理論回報率約 87%'),
+  mkcard('win24','--ac:#4dffa6;--abg:#06241a','#06241a',ball('1',gold)+ball('2',gold)+ball('…',gold)+ball('24',gold),'12 / 24 雙贏','24 選 12。全部猜中有獎，「全部猜錯」也有獎，所以叫雙贏。',['全中也中','全錯也中','5 種獎項'],['每注 10','頭獎 100,000×'],'理論回報率約 88%'),
+  mkcard('star3','--ac:#ff9f1c;--abg:#2a1700','#2a1700',dg(3)+dg(0)+dg(7),'3 位數','0 到 9 各選一個數字。正彩要位置全對，組彩只要數字對，對彩猜最後兩碼。',['正彩','組彩','對彩'],['每注 10','正彩 900×'],'每種玩法回報率 90%'),
+  mkcard('star4','--ac:#ff5a5f;--abg:#2a0d12','#2a0d12',dg(1)+dg(9)+dg(4)+dg(8),'4 位數','4 個數字，位置全對的「正彩」最高 9,000 倍。也有組彩和對彩。',['正彩','組彩','對彩'],['每注 10','正彩 9,000×'],'每種玩法回報率 90%'),
+  mkcard('m39','--ac:#4dc8ff;--abg:#0a2a3c','#0a2a3c',ball('二',gold)+ball('三',gold)+ball('四',gold),'用今彩539 對獎','選 2、3 或 4 個號碼，全部都在今彩539 的 5 個號碼裡才中獎。',['二合','三合','四合'],['每注 5','四合 14,800×'],'每種選法回報率約 90%'),
+  mkcard('m49','--ac:#4dc8ff;--abg:#0a2a3c','#0a2a3c',ball('二',gold)+ball('三',gold)+ball('四',gold),'用大樂透對獎','選 2、3 或 4 個號碼，全部都在大樂透的 6 個號碼（不含特別號）裡才中獎。',['二合','三合','四合'],['每注 5','四合 12,700×'],'每種選法回報率約 90%'),
+  mkcard('m38','--ac:#4dc8ff;--abg:#0a2a3c','#0a2a3c',ball('二',gold)+ball('三',gold)+ball('四',gold)+ball('五',gold),'用威力彩對獎','選 2 到 5 個號碼，全部都在威力彩第一區的 6 個號碼裡才中獎。',['二合到五合'],['每注 5','五合 75,000×'],'每種選法回報率約 90%')
+ ],info:'<h3>開獎方式</h3>今天買的彩券，<b>明天下午 5 點（台灣時間）</b>開獎，而且<b>所有玩家的開獎號碼完全一樣</b>。開獎的亂數來自公開的 drand 亂數信標，沒有人（包括我）能事先猜到。開獎時間一到，只要你打開網站，彩券就會自動對獎、自動發獎金。<h3 style="margin-top:10px">提醒</h3>這是參考台灣彩券規則做的<b>模擬遊戲</b>，用遊戲籌碼，和台灣彩券公司沒有關係，也不能換成真錢。真實彩券的總獎金大約只有銷售額的一半多，這裡為了好玩調高到約 90%。現實中的彩券有年齡限制，請把這裡當遊戲就好。'};
+ const hub=document.querySelector('.hub');
+ if(hub){
+  const bank=hub.querySelector('.t-bank');
+  const b=document.createElement('button');b.className='tile t-taiwan';
+  b.innerHTML='<div class="ti">🎫</div><div class="cnt">LOTTERY</div><h2>台灣彩券區</h2><p>每天 17:00 開獎<br>大樂透・威力彩・今彩539…</p>';
+  b.addEventListener('click',()=>zoneOpen('taiwan'));
+  if(bank)hub.insertBefore(b,bank);else hub.appendChild(b);
+ }
+ setTimeout(()=>settleAll(true),1500);
+ setInterval(()=>settleAll(true),60000);
+ setInterval(()=>{if(typeof scr!=='undefined'&&scr==='tw')countdown()},1000);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)settleAll(true)});
+ updateWallet();
+}
+build();
+})();
 
 /* ---------- 大廳背景 ---------- */
 (function(){
