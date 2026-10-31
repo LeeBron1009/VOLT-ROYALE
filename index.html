@@ -2700,6 +2700,173 @@ function build(){
 build();
 })();
 
+/* ---------- 新分區：數字彩區（Keno・六合彩）---------- */
+(function(){
+const STEPS=[5,10,25,50,100,250,500,1000];
+const fmt=n=>Math.round(n).toLocaleString();
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const pendSet=v=>store.set('pend',v);
+const KPAY={"1": [0.0, 3.8], "2": [0.0, 0.0, 15.9], "3": [0.0, 0.0, 4.5, 24.0], "4": [0.0, 0.0, 2.0, 7.5, 61.0], "5": [0.0, 0.0, 0.0, 5.0, 26.0, 325.0], "6": [0.0, 0.0, 0.0, 2.7, 9.5, 64.0, 920.0], "7": [0.0, 0.0, 0.0, 1.7, 4.5, 22.0, 200.0, 2800.0], "8": [0.0, 0.0, 0.0, 0.0, 3.9, 14.0, 84.0, 740.0, 10000.0], "9": [0.0, 0.0, 0.0, 0.0, 2.6, 7.0, 34.0, 225.0, 2350.0, 10000.0], "10": [0.0, 0.0, 0.0, 0.0, 0.0, 6.2, 20.0, 120.0, 990.0, 10000.0, 10000.0]};
+const LPAY={"2": 1.5, "3": 15, "4": 380, "5": 6000, "6": 100000};
+function injectCss(){
+ if(!document.head)return;
+ const st=document.createElement('style');
+ st.textContent=`
+.t-numbers{border-color:rgba(77,200,255,.65);box-shadow:0 0 34px rgba(77,200,255,.22);background:linear-gradient(160deg,rgba(10,70,120,.62),rgba(12,16,34,.85))}.t-numbers .ti{color:#4dc8ff}
+.tile:hover.t-numbers{box-shadow:0 0 46px rgba(77,200,255,.5)}
+.felt.bscroll{justify-content:flex-start;gap:10px;overflow-y:auto}.felt.bscroll::after,.felt.bscroll::before{display:none}
+#kn-ctrl,#lt-ctrl{max-height:46vh;overflow-y:auto}
+.opt{padding:8px 12px;border-radius:999px;border:1px solid var(--gold);background:rgba(255,209,102,.08);color:var(--gold);font-weight:800;font-size:13px}
+.opt.on{background:var(--gold);color:#221400}
+.ngrid{display:grid;grid-template-columns:repeat(var(--nc),var(--ns));gap:4px;z-index:1}
+.nb{width:var(--ns);height:var(--ns);border-radius:8px;border:1px solid rgba(255,255,255,.3);background:rgba(0,0,0,.3);color:#fff;font-weight:800;font-size:calc(var(--ns)*.42);padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.nb:disabled{cursor:default}
+.nb.pk{background:#ffd166;color:#221400;border-color:#fff}
+.nb.dr{background:#2a66c8;border-color:#7fb0ff}
+.nb.hit{background:#1fbf75;color:#fff;border-color:#fff;box-shadow:0 0 12px #4dffa6;animation:hitp .5s ease-in-out infinite alternate}
+.ptab{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;z-index:1;max-width:560px}
+.ptab span{padding:4px 10px;border-radius:8px;background:rgba(0,0,0,.35);font-size:12px;border:1px solid rgba(255,255,255,.15)}
+.ptab span.on{background:#1fbf75;border-color:#fff;font-weight:800}
+.ptab span.dim{opacity:.55}
+`;
+ document.head.appendChild(st);
+}
+function mk(id,title,t){
+ const d=document.createElement('div');d.id=id;d.className='tbl';
+ d.innerHTML='<div class="bjbar"><button class="ib" id="'+id+'-back">⌂</button><div class="t" id="'+id+'-title">'+title+'</div><div style="display:flex;gap:8px;align-items:center"><div class="wchip">⚡<b class="w-chips">0</b></div><button class="ib bankbtn" data-openbank style="width:auto;padding:0 10px">🏦</button></div></div><div class="felt bscroll" id="'+id+'-felt" data-t="'+t+'"></div><div class="ctrl" id="'+id+'-ctrl"></div>';
+ document.body.appendChild(d);TBLS.push(id);
+ const ob=d.querySelector('[data-openbank]');if(ob)ob.addEventListener('click',()=>openBank());
+ return d;
+}
+function setMsg(id,t,c){const e=$('#'+id);if(e){e.textContent=t;e.className='msg '+(c||'')}}
+function sample(total,k){const a=Array.from({length:total},(_,i)=>i+1);for(let i=0;i<k;i++){const j=i+Math.floor(Math.random()*(total-i));[a[i],a[j]]=[a[j],a[i]]}return a.slice(0,k)}
+
+/* ===== 兩個遊戲的設定 ===== */
+const GAMES={
+ keno:{id:'kn',name:'Keno 數字彩',total:80,cols:8,minP:1,maxP:10,draw:20,maxBet:1000,
+  pay:(n,h)=>(KPAY[n]&&KPAY[n][h])||0,quick:[3,5,8,10]},
+ lotto:{id:'lt',name:'六合彩 LOTTO 6/49',total:49,cols:7,minP:6,maxP:6,draw:6,maxBet:100,
+  pay:(n,h)=>LPAY[h]||0,quick:[6]}
+};
+for(const k in GAMES){Object.assign(GAMES[k],{key:k,bet:10,picks:[],drawn:[],shown:[],phase:'bet',skip:false,hits:-1})}
+function ngSteps(o){return STEPS.filter(s=>s<=o.maxBet)}
+function ngFit(o){const ch=chips(),st=ngSteps(o);let b=st[0];for(const s of st)if(s<=Math.min(o.bet,Math.max(ch,5)))b=s;o.bet=b}
+function ngBoard(o){
+ const fw=($('#'+o.id+'-felt').clientWidth||360)-30;
+ const ns=Math.max(30,Math.min(52,Math.floor((Math.min(fw,470)-(o.cols-1)*4)/o.cols)));
+ const dr=new Set(o.shown),pk=new Set(o.picks),busy=o.phase!=='bet';
+ let h='<div class="ngrid" style="--nc:'+o.cols+';--ns:'+ns+'px">';
+ for(let n=1;n<=o.total;n++){
+  const p=pk.has(n),d=dr.has(n);
+  h+='<button class="nb'+(p&&d?' hit':p?' pk':d?' dr':'')+'" data-n="'+n+'"'+(busy?' disabled':'')+'>'+n+'</button>';
+ }
+ $('#'+o.id+'board').innerHTML=h+'</div>';
+}
+function ngPayTab(o){
+ const n=o.picks.length;
+ if(o.key==='keno'&&n<1){$('#'+o.id+'pay').innerHTML='<div class="hint" style="text-align:center">先選 1 到 10 個號碼</div>';return}
+ if(o.key==='lotto'&&n<6){$('#'+o.id+'pay').innerHTML='<div class="hint" style="text-align:center">選 6 個號碼（猜中 2 個以上就有獎）</div>';return}
+ const rows=[];
+ const maxH=o.key==='keno'?n:6;
+ for(let h=0;h<=maxH;h++){const m=o.pay(n,h);if(m>0)rows.push('<span class="'+(o.hits===h?'on':(o.hits>=0?'dim':''))+'">命中 '+h+' → ×'+(m>=1000?fmt(m):m)+'</span>')}
+ $('#'+o.id+'pay').innerHTML='<div class="ptab">'+rows.join('')+'</div>';
+}
+function ngCtrl(o){
+ const busy=o.phase!=='bet',ch=chips(),n=o.picks.length;
+ const ready=n>=o.minP&&n<=o.maxP;
+ let r='<div class="betline">每期 <b>'+fmt(o.bet)+'</b>　已選 <b>'+n+'</b>'+(o.key==='keno'?' / 10':' / 6')+'　<span style="opacity:.7">籌碼 '+fmt(ch)+'</span></div>'+
+ '<div class="row"><button class="btn" data-a="dn"'+(busy?' disabled':'')+'>－</button><button class="btn" data-a="max"'+(busy?' disabled':'')+'>MAX</button><button class="btn" data-a="up"'+(busy?' disabled':'')+'>＋</button></div>'+
+ '<div class="row" style="align-items:center"><span class="mini">快選</span>'+o.quick.map(q=>'<button class="opt" data-a="q'+q+'"'+(busy?' disabled':'')+'>'+q+' 個</button>').join('')+'<button class="btn" data-a="clear"'+(busy?' disabled':'')+'>清除</button></div>'+
+ '<div class="row"><button class="btn'+(o.skip?' pri':'')+'" data-a="skip">⚡ 快速</button>'+(o.key==='keno'?'<button class="btn" data-a="info">賠率表</button>':'')+'<button class="btn gold spinbtn" data-a="go"'+((ready&&!busy&&ch>=o.bet)?'':' disabled')+'>開獎 ▶</button></div>';
+ $('#'+o.id+'-ctrl').innerHTML=r;
+}
+function ngRender(o){ngBoard(o);ngPayTab(o);ngCtrl(o)}
+function ngInfo(){
+ const rows=[];
+ for(let n=1;n<=10;n++){const t=KPAY[n],parts=[];for(let h=0;h<=n;h++)if(t[h]>0)parts.push(h+'中×'+(t[h]>=1000?fmt(t[h]):t[h]));rows.push('<tr><td>'+n+'</td><td style="text-align:left">'+parts.join('　')+'</td></tr>')}
+ openModal('<div class="panel"><h2>Keno 賠率表</h2><div class="hint">從 80 個號碼選 1~10 個，開出 20 個。倍數是「押注」的倍數。每種選法的理論回報率約 93% ~ 96%。</div><div style="overflow-x:auto"><table style="min-width:0;margin-top:8px"><tr><th>選</th><th>命中 → 倍數</th></tr>'+rows.join('')+'</table></div><div class="btns"><button class="btn" data-bank="close">關閉</button></div></div>');
+}
+async function ngGo(o){
+ if(o.phase!=='bet')return;
+ const n=o.picks.length;if(n<o.minP||n>o.maxP)return;
+ if(chips()<o.bet){openBank('籌碼不足。');return}
+ const drawn=sample(o.total,o.draw),set=new Set(drawn),hits=o.picks.filter(x=>set.has(x)).length;
+ const mult=o.pay(n,hits),ret=Math.round(o.bet*mult),bet=o.bet;
+ setChips(chips()-bet);pendSet(ret);o.phase='draw';o.drawn=drawn;o.shown=[];o.hits=-1;ngRender(o);
+ setMsg(o.id+'msg','開獎中⋯','');sfx('launch');
+ if(o.skip){o.shown=drawn.slice();ngBoard(o);await wait(350)}
+ else{
+  for(let i=0;i<drawn.length;i++){
+   o.shown.push(drawn[i]);ngBoard(o);
+   if(o.picks.indexOf(drawn[i])>=0)sfx('target');else if(i%3===0)sfx('card');
+   await wait(i<3?260:150);
+  }
+  await wait(250);
+ }
+ if(ret>0)setChips(chips()+ret);
+ pendSet(0);
+ o.hits=hits;o.phase='bet';
+ const net=ret-bet;
+ setMsg(o.id+'msg','命中 '+hits+' 個'+(mult>0?' → ×'+mult:'')+'　'+signed(net),net>0?'win':net<0?'lose':'push');
+ if(net>0)sfx('bonus');else sfx('drain');
+ ngBoard(o);ngPayTab(o);ngCtrl(o);
+}
+function ngAct(o,a){
+ if(a==='skip'){o.skip=!o.skip;ngCtrl(o);return}
+ if(a==='info'){ngInfo();return}
+ if(o.phase!=='bet')return;
+ const st=ngSteps(o),i=st.indexOf(o.bet);
+ if(a==='dn'){if(i>0)o.bet=st[i-1];ngCtrl(o);return}
+ if(a==='up'){if(i<st.length-1&&st[i+1]<=chips())o.bet=st[i+1];else if(i<st.length-1)toast('籌碼不夠再加');else if(o.maxBet<1000)toast('六合彩每期最多 '+o.maxBet);ngCtrl(o);return}
+ if(a==='max'){let b=st[0];for(const s of st)if(s<=chips())b=s;o.bet=b;ngCtrl(o);return}
+ if(a==='clear'){o.picks=[];o.shown=[];o.hits=-1;setMsg(o.id+'msg','選好號碼，按「開獎」','');ngRender(o);return}
+ if(a[0]==='q'){const q=+a.slice(1);o.picks=sample(o.total,q).sort((x,y)=>x-y);o.shown=[];o.hits=-1;ngRender(o);return}
+ if(a==='go')ngGo(o);
+}
+function ngPick(o,n){
+ if(o.phase!=='bet')return;
+ if(o.shown.length){o.shown=[];o.hits=-1}
+ const k=o.picks.indexOf(n);
+ if(k>=0)o.picks.splice(k,1);
+ else if(o.picks.length<o.maxP)o.picks.push(n);
+ else{toast('最多選 '+o.maxP+' 個');return}
+ sfx('chip');ngRender(o);
+}
+function ngOpen(o){
+ ngFit(o);o.phase='bet';o.shown=[];o.hits=-1;show(o.id);updateWallet();
+ setMsg(o.id+'msg','選好號碼，按「開獎」','');ngRender(o);
+}
+
+/* ===== 組裝 ===== */
+function build(){
+ injectCss();
+ for(const k in GAMES){
+  const o=GAMES[k];
+  mk(o.id,o.name,k==='keno'?'PICK 1-10 · DRAW 20':'PICK 6 OF 49');
+  $('#'+o.id+'-felt').innerHTML='<div class="msg" id="'+o.id+'msg">選好號碼，按「開獎」</div><div id="'+o.id+'board" style="display:flex;justify-content:center;width:100%"></div><div id="'+o.id+'pay" style="width:100%"></div><div class="hint" style="z-index:1;text-align:center;max-width:520px">'+(k==='keno'?'黃色是你選的，藍色是開出但沒選到的，綠色是你猜中的。':'6 個號碼選 6 個，猜中 2 個以上就有獎，全中是 100,000 倍。')+'</div>';
+  $('#'+o.id+'-felt').addEventListener('click',e=>{const b=e.target.closest('[data-n]');if(b)ngPick(o,+b.dataset.n)});
+  $('#'+o.id+'-ctrl').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b)ngAct(o,b.dataset.a)});
+  $('#'+o.id+'-back').addEventListener('click',()=>{if(o.phase!=='bet'){toast('等開獎結束');return}home()});
+ }
+ const art=(bg,inner)=>'<div class="art" style="display:flex;align-items:center;justify-content:center;gap:6px;background:'+bg+';font-size:24px;font-weight:900;flex-wrap:wrap;padding:10px">'+inner+'</div>';
+ const ball=(n,c,t)=>'<span style="width:38px;height:38px;border-radius:50%;background:'+c+';color:'+(t||'#fff')+';display:inline-flex;align-items:center;justify-content:center;font-size:17px;box-shadow:0 3px 8px rgba(0,0,0,.5)">'+n+'</span>';
+ ZONES.numbers={t:'數字彩區',s:'NUMBER GAMES',games:()=>[
+  {cls:'slc',vars:'--ac:#4dc8ff;--abg:radial-gradient(ellipse at 50% 100%,#0a3a5c,#040711)',art:art('radial-gradient(ellipse at 50% 100%,#0a3a5c,#040711)',ball(7,'#ffd166','#221400')+ball(23,'#1fbf75')+ball(41,'#2a66c8')+ball(58,'#ffd166','#221400')+ball(72,'#2a66c8')),en:'KENO · 80 NUMBERS',h:'Keno 數字彩',p:'從 1 到 80 選 1~10 個號碼，開出 20 個。猜中越多，倍數越高。選幾個由你決定。',tags:['選 1~10 個','開 20 個','快選'],price:['每期 5 ~ 1,000','最高 10,000×'],note:'理論回報率約 93% ~ 96%',btn:'選號 ▶',go:()=>ngOpen(GAMES.keno)},
+  {cls:'slc',vars:'--ac:#ff6b9d;--abg:radial-gradient(ellipse at 50% 100%,#5a1030,#14040a)',art:art('radial-gradient(ellipse at 50% 100%,#5a1030,#14040a)',ball(5,'#e63946')+ball(12,'#f4a261','#221400')+ball(19,'#e9c46a','#221400')+ball(27,'#2a9d8f')+ball(33,'#4cc9f0','#221400')+ball(46,'#7b6cf6')),en:'LOTTO · 6 / 49',h:'六合彩 LOTTO 6/49',p:'從 1 到 49 選 6 個號碼，開出 6 個。猜中 2 個就有獎，全中是 100,000 倍的大獎。',tags:['選 6 個','猜中 2 個有獎','超級大獎'],price:['每期 5 ~ 100','全中 100,000×'],note:'理論回報率約 95%',btn:'選號 ▶',go:()=>ngOpen(GAMES.lotto)}
+ ]};
+ const hub=document.querySelector('.hub');
+ if(hub){
+  const bank=hub.querySelector('.t-bank');
+  const b=document.createElement('button');b.className='tile t-numbers';
+  b.innerHTML='<div class="ti">🔢</div><div class="cnt">NUMBERS</div><h2>數字彩區</h2><p>Keno 數字彩<br>六合彩</p>';
+  b.addEventListener('click',()=>zoneOpen('numbers'));
+  if(bank)hub.insertBefore(b,bank);else hub.appendChild(b);
+ }
+ updateWallet();
+}
+build();
+})();
+
 /* ---------- 大廳背景 ---------- */
 (function(){
  const c=$('#bg'),x=c.getContext('2d');let pts=[];
