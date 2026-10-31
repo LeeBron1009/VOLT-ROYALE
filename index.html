@@ -2549,7 +2549,7 @@ function slipHtml(){
  }).join('')+'</div>';
 }
 function ctrl(){
- const c=$('#rc-ctrl'),busy=RC.phase==='run',ch=chips();
+ const c=$('#race-ctrl'),busy=RC.phase==='run',ch=chips();
  if(RC.phase==='done'){c.innerHTML='<div class="row"><button class="btn gold spinbtn" data-a="next">下一場 ▶</button></div>';return}
  const N=TYPES[RC.type].k,ready=RC.picks.length===N;
  const tot=RC.slip.reduce((s,b)=>s+b.stake,0);
