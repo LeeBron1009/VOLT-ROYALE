@@ -2867,6 +2867,278 @@ function build(){
 build();
 })();
 
+/* ---------- 新分區：技能區（反應測試・記憶翻牌・射擊）---------- */
+(function(){
+const STEPS=[5,10,25,50,100];            // 技能遊戲單局最多 100
+const fmt=n=>Math.round(n).toLocaleString();
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const NOW=()=>performance.now();
+/* ---- 獎金表（想調難度就改這裡）---- */
+const RX_TIERS=[[180,4],[210,2.5],[240,1.8],[270,1.3],[300,1],[330,.6],[380,.3]];   // 3 次平均反應時間(ms) → 倍數，超過最後一格 = 0
+const MM_TIERS={0:2.5,1:2.5,2:2.5,3:2.5,4:1.5,5:1.1,6:.85,7:.65,8:.5,9:.35,10:.25,11:.1,12:.1};   // 失誤次數 → 倍數，更多 = 0
+const SH_TIERS={18:3,19:3,20:3,17:2.5,16:2,15:1.7,14:1.4,13:1.1,12:.85,11:.65,10:.5,9:.35,8:.2,7:.1};   // 命中數 → 倍數
+const rxMult=avg=>{for(const [ub,m] of RX_TIERS)if(avg<ub)return m;return 0};
+const mmMult=miss=>MM_TIERS[miss]||0;
+const shMult=h=>SH_TIERS[h]||0;
+function injectCss(){
+ if(!document.head)return;
+ const st=document.createElement('style');
+ st.textContent=`
+.t-skill{border-color:rgba(120,255,160,.65);box-shadow:0 0 34px rgba(120,255,160,.2);background:linear-gradient(160deg,rgba(10,100,60,.6),rgba(12,16,34,.85))}.t-skill .ti{color:#78ffa0}
+.tile:hover.t-skill{box-shadow:0 0 46px rgba(120,255,160,.5)}
+.felt.bscroll{justify-content:flex-start;gap:10px;overflow-y:auto}.felt.bscroll::after,.felt.bscroll::before{display:none}
+#rx-ctrl,#mm-ctrl,#sh-ctrl{max-height:46vh;overflow-y:auto}
+.rxpad{width:min(100%,520px);height:min(46vh,300px);border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;z-index:1;user-select:none;-webkit-user-select:none;touch-action:manipulation;cursor:pointer;transition:background .05s;text-align:center;padding:10px}
+.rxpad.idle{background:#16305c}.rxpad.wait{background:#a8202f}.rxpad.go{background:#14b86a}.rxpad.show{background:#27408b}.rxpad.early{background:#c46a10}.rxpad.done{background:#2a1c5c}
+.rxbig{font-size:clamp(30px,9vw,54px);font-weight:900;text-shadow:0 2px 12px rgba(0,0,0,.5)}
+.rxsub{font-size:14px;opacity:.9}
+.mgrid4{display:grid;grid-template-columns:repeat(4,var(--cs));gap:8px;z-index:1}
+.mc{width:var(--cs);height:var(--cs);border-radius:12px;border:2px solid rgba(255,255,255,.35);background:linear-gradient(145deg,#26407a,#142348);color:#fff;font-size:calc(var(--cs)*.5);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:transform .15s}
+.mc.up{background:#fff;color:#111;transform:rotateY(0)}.mc.done{background:#1fbf75;border-color:#fff;opacity:.85}
+.mc:not(.up):not(.done):active{transform:scale(.94)}
+.shcv{width:min(100%,360px);height:auto;border-radius:14px;background:rgba(0,0,0,.4);touch-action:none;z-index:1;cursor:crosshair}
+.ptab{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;z-index:1;max-width:560px}
+.ptab span{padding:4px 10px;border-radius:8px;background:rgba(0,0,0,.35);font-size:12px;border:1px solid rgba(255,255,255,.15)}
+.ptab span.on{background:#1fbf75;border-color:#fff;font-weight:800}
+.opt{padding:8px 12px;border-radius:999px;border:1px solid var(--gold);background:rgba(255,209,102,.08);color:var(--gold);font-weight:800;font-size:13px}
+`;
+ document.head.appendChild(st);
+}
+function mk(id,title,t){
+ const d=document.createElement('div');d.id=id;d.className='tbl';
+ d.innerHTML='<div class="bjbar"><button class="ib" id="'+id+'-back">⌂</button><div class="t" id="'+id+'-title">'+title+'</div><div style="display:flex;gap:8px;align-items:center"><div class="wchip">⚡<b class="w-chips">0</b></div><button class="ib bankbtn" data-openbank style="width:auto;padding:0 10px">🏦</button></div></div><div class="felt bscroll" id="'+id+'-felt" data-t="'+t+'"></div><div class="ctrl" id="'+id+'-ctrl"></div>';
+ document.body.appendChild(d);TBLS.push(id);
+ const ob=d.querySelector('[data-openbank]');if(ob)ob.addEventListener('click',()=>openBank());
+ return d;
+}
+function setMsg(id,t,c){const e=$('#'+id);if(e){e.textContent=t;e.className='msg '+(c||'')}}
+function stepBet(o,a){
+ const i=STEPS.indexOf(o.bet),ch=chips();
+ if(a==='dn'){if(i>0)o.bet=STEPS[i-1]}
+ else if(a==='up'){if(i<STEPS.length-1&&STEPS[i+1]<=ch)o.bet=STEPS[i+1];else if(i<STEPS.length-1)toast('籌碼不夠再加');else toast('技能遊戲每局最多 100')}
+ else if(a==='max'){let b=STEPS[0];for(const s of STEPS)if(s<=ch)b=s;o.bet=b}
+}
+function fitBet(o){const ch=chips();let b=STEPS[0];for(const s of STEPS)if(s<=Math.min(o.bet,Math.max(ch,5)))b=s;o.bet=b}
+function betRow(o,dis,label){return '<div class="betline">'+(label||'押注')+' <b>'+fmt(o.bet)+'</b>　<span style="opacity:.7">籌碼 '+fmt(chips())+'</span></div><div class="row"><button class="btn" data-a="dn"'+(dis?' disabled':'')+'>－</button><button class="btn" data-a="max"'+(dis?' disabled':'')+'>MAX</button><button class="btn" data-a="up"'+(dis?' disabled':'')+'>＋</button></div>'}
+function payTab(id,rows,cur){$('#'+id).innerHTML='<div class="ptab">'+rows.map(r=>'<span class="'+(cur===r[0]?'on':'')+'">'+r[1]+'</span>').join('')+'</div>'}
+
+/* ===== 反應測試 ===== */
+const RX={bet:10,phase:'bet',round:0,times:[],st:'idle',t0:0,tok:0};
+function rxPaint(st,big,sub){const p=$('#rxpad');p.className='rxpad '+st;p.innerHTML='<div class="rxbig">'+big+'</div><div class="rxsub">'+(sub||'')+'</div>'}
+function rxTable(cur){
+ const rows=[],names=[];let prev=0;
+ RX_TIERS.forEach(([ub,m],i)=>{rows.push([i,(i===0?'低於 ':prev+'~')+ub+'ms → ×'+m]);prev=ub});
+ rows.push([RX_TIERS.length,'超過 '+prev+'ms → ×0']);
+ payTab('rxpay',rows,cur);
+}
+function rxCtrl(){
+ const busy=RX.phase==='play';
+ $('#rx-ctrl').innerHTML=betRow(RX,busy)+'<div class="row"><button class="btn gold spinbtn" data-a="start"'+((busy||chips()<RX.bet)?' disabled':'')+'>開始 ▶</button></div>';
+}
+function rxStart(){
+ if(RX.phase==='play')return;
+ if(chips()<RX.bet){openBank('籌碼不足。');return}
+ setChips(chips()-RX.bet);RX.phase='play';RX.round=0;RX.times=[];RX.tok++;rxCtrl();setMsg('rxmsg','','');rxTable(-1);rxNext();
+}
+function rxNext(){
+ const tok=RX.tok;RX.round++;RX.st='wait';
+ rxPaint('wait','等綠燈⋯','第 '+RX.round+' / 3 次　變綠才點，點太早算輸');
+ setTimeout(()=>{
+  if(tok!==RX.tok||RX.st!=='wait')return;
+  RX.st='go';rxPaint('go','現在點！','');RX.t0=NOW();
+  requestAnimationFrame(()=>{if(RX.st==='go')RX.t0=NOW()});
+ },1200+Math.random()*2600);
+}
+function rxEnd(ret,msg,cls,pad,big,sub){
+ RX.phase='bet';RX.st='idle';RX.tok++;
+ if(ret>0)setChips(chips()+ret);
+ rxPaint(pad,big,sub);
+ const net=ret-RX.bet;
+ setMsg('rxmsg',msg+'　'+signed(net),net>0?'win':net<0?'lose':'push');
+ if(net>0)sfx('bonus');else sfx('drain');
+ rxCtrl();
+}
+function rxPress(ts){
+ if(RX.phase!=='play')return;
+ if(RX.st==='wait'){rxEnd(0,'太早了！','lose','early','太早了！','綠燈還沒亮就點，這局輸掉');return}
+ if(RX.st!=='go')return;
+ const t=(ts&&ts<1e11)?ts:NOW(),rt=Math.round(t-RX.t0);
+ if(rt<100){rxEnd(0,'太早了！','lose','early','太早了！','反應不可能這麼快');return}
+ RX.times.push(rt);RX.st='shown';sfx('target');
+ if(RX.times.length>=3){
+  const avg=Math.round(RX.times.reduce((a,b)=>a+b,0)/3),m=rxMult(avg),ret=Math.round(RX.bet*m);
+  let idx=RX_TIERS.findIndex(([ub])=>avg<ub);if(idx<0)idx=RX_TIERS.length;
+  rxTable(idx);
+  rxEnd(ret,'三次平均 '+avg+' ms → ×'+m,'','done',avg+' ms',RX.times.join(' / ')+' ms　×'+m);
+ }else{
+  rxPaint('show',rt+' ms','第 '+RX.times.length+' 次');
+  const tok=RX.tok;setTimeout(()=>{if(tok===RX.tok&&RX.phase==='play')rxNext()},800);
+ }
+}
+function rxOpen(){fitBet(RX);RX.phase='bet';RX.st='idle';show('rx');updateWallet();rxPaint('idle','反應測試','按「開始」，變綠就點');setMsg('rxmsg','三次平均越快，倍數越高','');rxTable(-1);rxCtrl()}
+
+/* ===== 記憶翻牌 ===== */
+const MM_EMO=['🍎','🚀','🎲','🎧','💎','🔥','🌙','🎯'];
+const MM={bet:10,phase:'bet',cards:[],open:[],miss:0,pairs:0,lock:false};
+function mmTable(cur){
+ const rows=[[0,'0~3 次失誤 → ×'+MM_TIERS[3]],[4,'4 次 → ×'+MM_TIERS[4]],[5,'5 次 → ×'+MM_TIERS[5]],[6,'6 次 → ×'+MM_TIERS[6]],[7,'7 次 → ×'+MM_TIERS[7]],[8,'8 次 → ×'+MM_TIERS[8]],[9,'9 次 → ×'+MM_TIERS[9]],[10,'10 次 → ×'+MM_TIERS[10]],[11,'11~12 次 → ×'+MM_TIERS[11]],[13,'13 次以上 → ×0']];
+ payTab('mmpay',rows,cur===undefined?-1:(cur<=3?0:cur>=13?13:cur===12?11:cur));
+}
+function mmRender(){
+ const cs=Math.max(54,Math.min(92,Math.floor((Math.min($('#mm-felt').clientWidth||360,440)-24-3*8)/4)));
+ let h='<div class="mgrid4" style="--cs:'+cs+'px">';
+ MM.cards.forEach((c,i)=>{h+='<button class="mc'+(c.up?' up':'')+(c.done?' done':'')+'" data-c="'+i+'">'+((c.up||c.done)?MM_EMO[c.v]:'❓')+'</button>'});
+ $('#mmgrid').innerHTML=h+'</div>';
+ $('#mminfo').textContent=MM.phase==='play'?'失誤 '+MM.miss+' 次　已配對 '+MM.pairs+' / 8':'';
+}
+function mmCtrl(){
+ const busy=MM.phase==='play';
+ $('#mm-ctrl').innerHTML=busy?'<div class="betline">押注 <b>'+fmt(MM.bet)+'</b>　配對時失誤越少，倍數越高</div>':betRow(MM,false)+'<div class="row"><button class="btn gold spinbtn" data-a="start"'+(chips()>=MM.bet?'':' disabled')+'>開始 ▶</button></div>';
+}
+function mmStart(){
+ if(MM.phase==='play')return;
+ if(chips()<MM.bet){openBank('籌碼不足。');return}
+ setChips(chips()-MM.bet);
+ const vals=[];for(let i=0;i<8;i++){vals.push(i);vals.push(i)}
+ for(let i=vals.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[vals[i],vals[j]]=[vals[j],vals[i]]}
+ MM.cards=vals.map(v=>({v,up:false,done:false}));MM.open=[];MM.miss=0;MM.pairs=0;MM.lock=false;MM.phase='play';
+ setMsg('mmmsg','翻兩張一樣的','');mmTable();mmRender();mmCtrl();
+}
+function mmFlip(i){
+ if(MM.phase!=='play'||MM.lock)return;
+ const c=MM.cards[i];if(!c||c.up||c.done)return;
+ c.up=true;MM.open.push(i);sfx('card');mmRender();
+ if(MM.open.length<2)return;
+ MM.lock=true;const [a,b]=MM.open;
+ if(MM.cards[a].v===MM.cards[b].v){
+  MM.cards[a].done=MM.cards[b].done=true;MM.cards[a].up=MM.cards[b].up=false;MM.pairs++;MM.open=[];MM.lock=false;sfx('target');mmRender();
+  if(MM.pairs>=8)mmFinish();
+ }else{
+  MM.miss++;
+  setTimeout(()=>{MM.cards[a].up=MM.cards[b].up=false;MM.open=[];MM.lock=false;mmRender()},700);
+ }
+}
+function mmFinish(){
+ MM.phase='bet';
+ const m=mmMult(MM.miss),ret=Math.round(MM.bet*m),net=ret-MM.bet;
+ if(ret>0)setChips(chips()+ret);
+ mmTable(MM.miss);
+ setMsg('mmmsg','失誤 '+MM.miss+' 次 → ×'+m+'　'+signed(net),net>0?'win':net<0?'lose':'push');
+ if(net>0)sfx('bonus');else sfx('drain');
+ mmRender();mmCtrl();
+}
+function mmOpen(){fitBet(MM);MM.phase='bet';MM.cards=Array.from({length:16},()=>({v:0,up:false,done:false}));show('mm');updateWallet();setMsg('mmmsg','失誤越少，倍數越高','');mmTable();mmRender();mmCtrl()}
+
+/* ===== 射擊 ===== */
+const SH_N=20,SH_R=28,SH_L0=900,SH_L1=450,SW=340,SHH=380;
+const SH={bet:10,phase:'bet',i:0,hits:0,tg:null,raf:0,flash:null,start:0};
+function shTable(cur){
+ const rows=[[18,'18~20 中 → ×'+SH_TIERS[18]]];
+ for(let h=17;h>=7;h--)rows.push([h,h+' 中 → ×'+SH_TIERS[h]]);
+ rows.push([0,'6 以下 → ×0']);
+ payTab('shpay',rows,cur===undefined?-1:(cur>=18?18:cur<=6?0:cur));
+}
+function shCtrl(){
+ const busy=SH.phase==='play';
+ $('#sh-ctrl').innerHTML=busy?'<div class="betline">押注 <b>'+fmt(SH.bet)+'</b>　點擊出現的靶心</div>':betRow(SH,false)+'<div class="row"><button class="btn gold spinbtn" data-a="start"'+(chips()>=SH.bet?'':' disabled')+'>開始 ▶</button></div>';
+}
+function shSpawn(){
+ if(SH.i>=SH_N){shFinish();return}
+ const life=SH_L0-(SH_L0-SH_L1)*SH.i/(SH_N-1);
+ SH.tg={x:SH_R+8+Math.random()*(SW-2*SH_R-16),y:SH_R+30+Math.random()*(SHH-2*SH_R-40),t0:NOW()+260,life};
+}
+function shDraw(now){
+ const cv=$('#shcv'),ctx=cv.getContext('2d');
+ ctx.clearRect(0,0,SW,SHH);
+ ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=1;
+ for(let x=0;x<=SW;x+=34){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,SHH);ctx.stroke()}
+ for(let y=0;y<=SHH;y+=38){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(SW,y);ctx.stroke()}
+ ctx.fillStyle='#fff';ctx.font='bold 14px sans-serif';ctx.textAlign='left';ctx.textBaseline='top';
+ ctx.fillText(SH.phase==='play'?'第 '+Math.min(SH.i+1,SH_N)+' / '+SH_N+'　命中 '+SH.hits:'',10,8);
+ const t=SH.tg;
+ if(t&&now>=t.t0&&now<=t.t0+t.life){
+  const left=1-(now-t.t0)/t.life;
+  ctx.beginPath();ctx.arc(t.x,t.y,SH_R,0,7);ctx.fillStyle='#fff';ctx.fill();
+  ctx.beginPath();ctx.arc(t.x,t.y,SH_R*.72,0,7);ctx.fillStyle='#e63946';ctx.fill();
+  ctx.beginPath();ctx.arc(t.x,t.y,SH_R*.4,0,7);ctx.fillStyle='#fff';ctx.fill();
+  ctx.beginPath();ctx.arc(t.x,t.y,SH_R*.16,0,7);ctx.fillStyle='#e63946';ctx.fill();
+  ctx.beginPath();ctx.arc(t.x,t.y,SH_R+6,-Math.PI/2,-Math.PI/2+Math.PI*2*left);ctx.strokeStyle='#ffd166';ctx.lineWidth=4;ctx.stroke();
+ }
+ if(SH.flash&&now-SH.flash.t<350){
+  const p=(now-SH.flash.t)/350;ctx.beginPath();ctx.arc(SH.flash.x,SH.flash.y,SH_R+p*24,0,7);ctx.strokeStyle=SH.flash.hit?'rgba(77,255,166,'+(1-p)+')':'rgba(255,107,129,'+(1-p)+')';ctx.lineWidth=4;ctx.stroke();
+ }
+}
+function shLoop(){
+ if(SH.phase!=='play')return;
+ const now=NOW(),t=SH.tg;
+ if(t&&now>t.t0+t.life){SH.flash={x:t.x,y:t.y,t:now,hit:false};SH.i++;shSpawn()}
+ shDraw(now);
+ SH.raf=requestAnimationFrame(shLoop);
+}
+function shTap(x,y){
+ if(SH.phase!=='play')return;
+ const now=NOW(),t=SH.tg;
+ if(!t||now<t.t0||now>t.t0+t.life)return;
+ if(Math.hypot(x-t.x,y-t.y)<=SH_R){SH.hits++;SH.flash={x:t.x,y:t.y,t:now,hit:true};sfx('target');SH.i++;shSpawn()}
+}
+function shFinish(){
+ SH.phase='bet';SH.tg=null;
+ const m=shMult(SH.hits),ret=Math.round(SH.bet*m),net=ret-SH.bet;
+ if(ret>0)setChips(chips()+ret);
+ shTable(SH.hits);
+ setMsg('shmsg','命中 '+SH.hits+' / '+SH_N+' → ×'+m+'　'+signed(net),net>0?'win':net<0?'lose':'push');
+ if(net>0)sfx('bonus');else sfx('drain');
+ shDraw(NOW());shCtrl();
+}
+function shStart(){
+ if(SH.phase==='play')return;
+ if(chips()<SH.bet){openBank('籌碼不足。');return}
+ setChips(chips()-SH.bet);SH.phase='play';SH.i=0;SH.hits=0;SH.flash=null;shTable();setMsg('shmsg','準備⋯','');shCtrl();
+ SH.tg=null;
+ setTimeout(()=>{if(SH.phase!=='play')return;setMsg('shmsg','','');shSpawn();SH.raf=requestAnimationFrame(shLoop)},700);
+}
+function shOpen(){fitBet(SH);SH.phase='bet';SH.tg=null;show('sh');updateWallet();setMsg('shmsg','靶心會越來越快消失','');shTable();shDraw(NOW());shCtrl()}
+
+/* ===== 組裝 ===== */
+function build(){
+ injectCss();
+ mk('rx','REACTION 反應測試','REACTION TEST');
+ $('#rx-felt').innerHTML='<div class="rxpad idle" id="rxpad"></div><div class="msg" id="rxmsg"></div><div id="rxpay" style="width:100%"></div>';
+ $('#rxpad').addEventListener('pointerdown',e=>{e.preventDefault();rxPress(e.timeStamp)});
+ $('#rx-ctrl').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;if(a==='start')rxStart();else if(RX.phase!=='play'){stepBet(RX,a);rxCtrl()}});
+ $('#rx-back').addEventListener('click',()=>{if(RX.phase==='play'){toast('進行中，離開會輸掉押注');return}home()});
+ mk('mm','MEMORY 記憶翻牌','MEMORY MATCH');
+ $('#mm-felt').innerHTML='<div class="msg" id="mmmsg"></div><div id="mminfo" class="hint" style="z-index:1"></div><div id="mmgrid"></div><div id="mmpay" style="width:100%"></div>';
+ $('#mm-felt').addEventListener('click',e=>{const b=e.target.closest('[data-c]');if(b)mmFlip(+b.dataset.c)});
+ $('#mm-ctrl').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;if(a==='start')mmStart();else if(MM.phase!=='play'){stepBet(MM,a);mmCtrl()}});
+ $('#mm-back').addEventListener('click',()=>{if(MM.phase==='play'){toast('進行中，離開會輸掉押注');return}home()});
+ mk('sh','SHOOT 射擊','TARGET PRACTICE');
+ $('#sh-felt').innerHTML='<div class="msg" id="shmsg"></div><canvas id="shcv" class="shcv" width="'+SW+'" height="'+SHH+'"></canvas><div id="shpay" style="width:100%"></div>';
+ $('#shcv').addEventListener('pointerdown',e=>{
+  e.preventDefault();const cv=$('#shcv'),r=cv.getBoundingClientRect();
+  shTap((e.clientX-r.left)*SW/(r.width||SW),(e.clientY-r.top)*SHH/(r.height||SHH));
+ });
+ $('#sh-ctrl').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;if(a==='start')shStart();else if(SH.phase!=='play'){stepBet(SH,a);shCtrl()}});
+ $('#sh-back').addEventListener('click',()=>{if(SH.phase==='play'){toast('進行中，離開會輸掉押注');return}home()});
+ const art=(bg,inner)=>'<div class="art" style="display:flex;align-items:center;justify-content:center;gap:10px;background:'+bg+';font-size:46px">'+inner+'</div>';
+ ZONES.skill={t:'技能區',s:'SKILL GAMES',games:()=>[
+  {cls:'slc',vars:'--ac:#14b86a;--abg:#0c3a28',art:art('#0c3a28','<span style="display:inline-block;width:86px;height:64px;border-radius:14px;background:#14b86a;box-shadow:0 0 18px #14b86a;font-size:18px;font-weight:900;color:#fff;line-height:64px;text-align:center">點！</span><span style="font-size:22px;font-weight:900;color:#fff">187ms</span>'),en:'REACTION · 3 ROUNDS',h:'反應測試 REACTION',p:'畫面變綠就點。連測三次，用平均時間算倍數，點太早就輸。手越快，賺越多。',tags:['三次平均','點太早算輸','拼手速'],price:['每局 5 ~ 100','最高 4×'],note:'三次平均低於 300ms 不虧，越快賺越多',btn:'開始 ▶',go:rxOpen},
+  {cls:'slc',vars:'--ac:#9b5cff;--abg:#1d1140',art:art('#1d1140','🚀 💎 <span style="font-size:36px">❓</span> 🔥'),en:'MEMORY · 8 PAIRS',h:'記憶翻牌 MEMORY',p:'16 張牌 8 對，翻兩張一樣的就配對成功。失誤越少，倍數越高，全看你的記憶力。',tags:['4×4','8 對','失誤越少越賺'],price:['每局 5 ~ 100','最高 2.5×'],note:'失誤 5 次以內不虧',btn:'開始 ▶',go:mmOpen},
+  {cls:'slc',vars:'--ac:#ff5a5f;--abg:#2a0d12',art:art('#2a0d12','<i style="display:block;width:78px;height:78px;border-radius:50%;background:radial-gradient(circle,#e63946 0 16%,#fff 17% 40%,#e63946 41% 72%,#fff 73%);box-shadow:0 0 18px rgba(230,57,70,.6)"></i>'),en:'TARGET · 20 SHOTS',h:'射擊 SHOOT',p:'靶心一個一個出現，而且越來越快消失。20 個裡面打中越多，倍數越高。',tags:['20 個靶','越來越快','拼準度'],price:['每局 5 ~ 100','最高 3×'],note:'打中 13 個以上不虧',btn:'開始 ▶',go:shOpen}
+ ],info:'<h3>技能區怎麼算</h3>這裡的結果主要看你的技術，不是純運氣：普通玩家大多會小虧，技術好的玩家可以賺錢。為了避免被鑽漏洞，每局最多押 100，獎金表我用電腦模擬估算過，實際難度可能要依你的手機或電腦調整。'};
+ const hub=document.querySelector('.hub');
+ if(hub){
+  const bank=hub.querySelector('.t-bank');
+  const b=document.createElement('button');b.className='tile t-skill';
+  b.innerHTML='<div class="ti">🎯</div><div class="cnt">SKILL</div><h2>技能區</h2><p>反應測試・記憶翻牌<br>射擊</p>';
+  b.addEventListener('click',()=>zoneOpen('skill'));
+  if(bank)hub.insertBefore(b,bank);else hub.appendChild(b);
+ }
+ updateWallet();
+}
+build();
+})();
+
 /* ---------- 大廳背景 ---------- */
 (function(){
  const c=$('#bg'),x=c.getContext('2d');let pts=[];
