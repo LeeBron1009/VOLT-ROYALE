@@ -3139,6 +3139,275 @@ function build(){
 build();
 })();
 
+/* ---------- 新分區：任務與成就 ---------- */
+(function(){
+const fmt=n=>Math.round(n).toLocaleString();
+const bankop=()=>typeof BANKOP!=='undefined'&&BANKOP;
+const setBankop=v=>{if(typeof BANKOP!=='undefined')BANKOP=v};
+const ZONE_OF={bj:'cards',war:'cards',tcp:'cards',hold:'cards',game:'pinball',slot:'slots',rl:'table',sb:'table',cr:'instant',pl:'instant',mn:'instant',wh:'lottery',sc:'lottery',bx:'lottery',race:'racing',kn:'numbers',lt:'numbers',rx:'skill',mm:'skill',sh:'skill'};
+const ZN={cards:'撲克牌區',pinball:'彈珠檯區',slots:'拉霸機區',table:'輪盤骰子區',instant:'即時遊戲區',lottery:'幸運彩券區',racing:'賽事區',numbers:'數字彩區',skill:'技能區'};
+function zoneAvail(z){return typeof ZONES!=='undefined'&&!!ZONES[z]}
+function todayStr(){const d=new Date();return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate()}
+function yesterdayStr(){const d=new Date();d.setDate(d.getDate()-1);return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate()}
+function seedOf(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+function rng(seed){return()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const vipN=()=>(typeof VIP!=='undefined'&&typeof vipLv==='function')?VIP[vipLv()].n:'—';
+const vipI=()=>typeof vipLv==='function'?vipLv():0;
+const wag=()=>typeof wagered==='function'?wagered():0;
+const sav=()=>typeof savings==='function'?savings():0;
+const net=()=>chips()+sav()-debt();
+
+/* ---- 資料 ---- */
+function S(){
+ let s=store.get('qstats',null);
+ if(!s){s={bets:0,wins:0,wager:wag(),maxWin:0,games:{},zones:{},streak:0,best:0,last:'',hadDebt:debt()>0,cleared:false,dep:0};store.set('qstats',s)}
+ return s;
+}
+function saveS(s){store.set('qstats',s)}
+const DAILY=[
+ {id:'bets',n:'下注 15 次',t:15,m:m=>m.bets,r:60,x:150},
+ {id:'wager',n:'累計下注 1,000 籌碼',t:1000,m:m=>m.wager,r:100,x:300},
+ {id:'wins',n:'拿到 6 次派彩',t:6,m:m=>m.wins,r:80,x:200},
+ {id:'big',n:'單次派彩達 300',t:300,m:m=>m.big,r:120,x:300},
+ {id:'dist',n:'玩 3 種不同遊戲',t:3,m:m=>m.dist.length,r:80,x:200},
+ {id:'dep',n:'存入保險箱 200',t:200,m:m=>m.dep,r:60,x:100},
+ {id:'z_slots',z:'slots',n:'在拉霸機區轉 10 次',t:10,m:m=>m.z.slots||0,r:70,x:150},
+ {id:'z_cards',z:'cards',n:'在撲克牌區玩 6 手',t:6,m:m=>m.z.cards||0,r:70,x:150},
+ {id:'z_pinball',z:'pinball',n:'玩 2 局彈珠台',t:2,m:m=>m.z.pinball||0,r:60,x:150},
+ {id:'z_instant',z:'instant',n:'在即時遊戲區玩 8 次',t:8,m:m=>m.z.instant||0,r:70,x:150},
+ {id:'z_skill',z:'skill',n:'在技能區玩 3 局',t:3,m:m=>m.z.skill||0,r:80,x:200},
+ {id:'z_table',z:'table',n:'在輪盤骰子區玩 5 局',t:5,m:m=>m.z.table||0,r:70,x:150},
+ {id:'z_lottery',z:'lottery',n:'在幸運彩券區玩 5 次',t:5,m:m=>m.z.lottery||0,r:70,x:150},
+ {id:'z_racing',z:'racing',n:'下注 2 場賽事',t:2,m:m=>m.z.racing||0,r:80,x:200},
+ {id:'z_numbers',z:'numbers',n:'在數字彩區玩 4 期',t:4,m:m=>m.z.numbers||0,r:70,x:150}
+];
+const ALL_BONUS={r:150,x:300};
+function Q(){
+ const day=todayStr();let q=store.get('qday',null);
+ if(!q||q.day!==day){
+  const pool=DAILY.filter(d=>!d.z||zoneAvail(d.z));
+  const rd=rng(seedOf(day)),arr=pool.slice();
+  for(let i=arr.length-1;i>0;i--){const j=Math.floor(rd()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]]}
+  const ids=arr.slice(0,3).map(d=>d.id);
+  q={day,ids,m:{bets:0,wager:0,wins:0,big:0,dist:[],z:{},dep:0},claimed:{},bonus:false};
+  store.set('qday',q);
+ }
+ return q;
+}
+function saveQ(q){store.set('qday',q)}
+const qd=id=>DAILY.find(d=>d.id===id);
+const qDone=(q,id)=>qd(id).m(q.m)>=qd(id).t;
+
+const ACH=[
+ {id:'first',n:'初次下注',d:'完成第一次下注',ok:s=>s.bets>=1,r:20,x:50},
+ {id:'w1',n:'小試身手',d:'累計下注 10,000',ok:s=>s.wager>=10000,r:200,x:300},
+ {id:'w2',n:'常客',d:'累計下注 100,000',ok:s=>s.wager>=100000,r:1000,x:1500},
+ {id:'w3',n:'豪客',d:'累計下注 1,000,000',ok:s=>s.wager>=1000000,r:5000,x:6000},
+ {id:'m1',n:'手氣不錯',d:'單次派彩達 1,000',ok:s=>s.maxWin>=1000,r:100,x:200},
+ {id:'m2',n:'大贏家',d:'單次派彩達 10,000',ok:s=>s.maxWin>=10000,r:500,x:800},
+ {id:'m3',n:'傳說一擊',d:'單次派彩達 100,000',ok:s=>s.maxWin>=100000,r:2000,x:3000},
+ {id:'g1',n:'愛嘗鮮',d:'玩過 5 種不同遊戲',ok:s=>Object.keys(s.games).length>=5,r:100,x:200},
+ {id:'g2',n:'全能玩家',d:'玩過 12 種不同遊戲',ok:s=>Object.keys(s.games).length>=12,r:400,x:800},
+ {id:'zall',n:'踏遍全場',d:'每個分區都玩過至少一次',ok:s=>Object.keys(ZONES).length>=3&&Object.keys(ZONES).every(z=>(s.zones[z]||0)>0),r:500,x:1000},
+ {id:'s3',n:'三天不間斷',d:'連續登入 3 天',ok:s=>s.best>=3,r:50,x:100},
+ {id:'s7',n:'一週常客',d:'連續登入 7 天',ok:s=>s.best>=7,r:200,x:400},
+ {id:'s30',n:'月度忠實',d:'連續登入 30 天',ok:s=>s.best>=30,r:1500,x:3000},
+ {id:'v1',n:'存錢達人',d:'保險箱存款達 1,000',ok:()=>sav()>=1000,r:100,x:200},
+ {id:'v2',n:'小富翁',d:'保險箱存款達 10,000',ok:()=>sav()>=10000,r:500,x:800},
+ {id:'n1',n:'身價不凡',d:'淨資產達 5,000',ok:()=>net()>=5000,r:150,x:300},
+ {id:'n2',n:'財富自由',d:'淨資產達 50,000',ok:()=>net()>=50000,r:1000,x:2000},
+ {id:'debt',n:'有借有還',d:'借過錢，而且把債務還清',ok:s=>s.cleared,r:80,x:150},
+ {id:'p1',n:'彈珠高手',d:'霓虹裂隙達 30,000 分，或復古 \'82 達 15,000 分',ok:()=>store.get('best_modern',0)>=30000||store.get('best_retro',0)>=15000,r:300,x:600},
+ {id:'vip1',n:'白銀 VIP',d:'VIP 升到白銀',ok:()=>vipI()>=1,r:100,x:0},
+ {id:'vip2',n:'黃金 VIP',d:'VIP 升到黃金',ok:()=>vipI()>=2,r:300,x:0},
+ {id:'vip3',n:'白金 VIP',d:'VIP 升到白金',ok:()=>vipI()>=3,r:800,x:0},
+ {id:'vip4',n:'鑽石 VIP',d:'VIP 升到鑽石',ok:()=>vipI()>=4,r:2000,x:0},
+ {id:'vip5',n:'伏特傳奇',d:'VIP 升到伏特傳奇',ok:()=>vipI()>=5,r:6000,x:0}
+];
+const achState=()=>store.get('ach',{});
+
+/* ---- 事件 ---- */
+function curGame(){
+ if(typeof scr!=='undefined'){
+  if(ZONE_OF[scr])return scr;
+  if(scr==='zone'&&typeof curZone!=='undefined'&&curZone==='pinball')return 'game';
+ }
+ return null;
+}
+function check(){
+ const s=S(),st=achState();let fresh=[];
+ ACH.forEach(a=>{if(!st[a.id]&&a.ok(s)){st[a.id]={t:Date.now(),c:0};fresh.push(a)}});
+ if(fresh.length){store.set('ach',st);toast('🏅 解鎖成就：'+fresh.map(a=>a.n).join('、'))}
+ dot();
+}
+function onBet(amt){
+ const s=S(),q=Q(),g=curGame();
+ s.bets++;s.wager+=amt;q.m.bets++;q.m.wager+=amt;
+ if(g){
+  s.games[g]=(s.games[g]||0)+1;
+  const z=ZONE_OF[g];s.zones[z]=(s.zones[z]||0)+1;q.m.z[z]=(q.m.z[z]||0)+1;
+  if(q.m.dist.indexOf(g)<0)q.m.dist.push(g);
+ }
+ const before=q.ids.filter(id=>qDone(q,id)).length;
+ saveS(s);saveQ(q);
+ const after=q.ids.filter(id=>qDone(q,id)).length;
+ if(after>before)toast('📜 任務完成！去「任務」領獎勵');
+ check();
+}
+function onWin(amt){
+ const s=S(),q=Q();
+ s.wins++;s.maxWin=Math.max(s.maxWin,amt);q.m.wins++;q.m.big=Math.max(q.m.big,amt);
+ const before=q.ids.filter(id=>qDone(q,id)).length;
+ saveS(s);saveQ(q);
+ const after=q.ids.filter(id=>qDone(q,id)).length;
+ if(after>before)toast('📜 任務完成！去「任務」領獎勵');
+ check();
+}
+function onDeposit(amt){
+ const s=S(),q=Q();s.dep+=amt;q.m.dep+=amt;
+ const before=q.ids.filter(id=>qDone(q,id)).length;
+ saveS(s);saveQ(q);
+ if(q.ids.filter(id=>qDone(q,id)).length>before)toast('📜 任務完成！去「任務」領獎勵');
+ check();
+}
+function touchLogin(){
+ const s=S(),t=todayStr();
+ if(s.last!==t){s.streak=(s.last===yesterdayStr())?s.streak+1:1;s.last=t;s.best=Math.max(s.best,s.streak);saveS(s)}
+}
+
+/* ---- 攔截錢包函式（不用改其他遊戲）---- */
+const _setChips=setChips,_setSav=setSav,_setDebt=setDebt;
+setChips=function(v){
+ const old=chips();_setChips(v);const nw=chips();
+ if(!bankop()){if(nw<old)onBet(old-nw);else if(nw>old)onWin(nw-old)}
+};
+setSav=function(v){
+ const old=sav();_setSav(v);const nw=sav();
+ if(bankop()&&nw>old)onDeposit(nw-old);else check();
+};
+setDebt=function(v){
+ const s=S();_setDebt(v);
+ if(debt()>0&&!s.hadDebt){s.hadDebt=true;saveS(s)}
+ if(s.hadDebt&&debt()===0&&!s.cleared){s.cleared=true;saveS(s)}
+ check();
+};
+
+/* ---- 領獎 ---- */
+function give(r,x){
+ const prev=bankop();setBankop(true);
+ try{if(r>0)setChips(chips()+r);if(x>0)store.set('wag',wag()+x)}finally{setBankop(prev)}
+ if(typeof updateWallet==='function')updateWallet();
+ sfx('bonus');
+}
+function claimQ(id){
+ const q=Q();if(q.claimed[id]||!q.ids.includes(id)||!qDone(q,id))return;
+ q.claimed[id]=1;saveQ(q);const d=qd(id);give(d.r,d.x);toast('領取：+'+d.r+' 籌碼、+'+d.x+' VIP 經驗');
+}
+function claimBonus(){
+ const q=Q();if(q.bonus||!q.ids.every(id=>q.claimed[id]))return;
+ q.bonus=true;saveQ(q);give(ALL_BONUS.r,ALL_BONUS.x);toast('全勤獎勵：+'+ALL_BONUS.r+' 籌碼、+'+ALL_BONUS.x+' VIP 經驗');
+}
+function claimA(id){
+ const st=achState(),a=ACH.find(x=>x.id===id);if(!a||!st[id]||st[id].c)return;
+ st[id].c=1;store.set('ach',st);give(a.r,a.x);toast('領取成就獎勵：+'+a.r+' 籌碼'+(a.x?'、+'+a.x+' VIP 經驗':''));
+}
+function claimable(){
+ const q=Q(),st=achState();let n=0;
+ q.ids.forEach(id=>{if(qDone(q,id)&&!q.claimed[id])n++});
+ if(!q.bonus&&q.ids.every(id=>q.claimed[id]))n++;
+ ACH.forEach(a=>{if(st[a.id]&&!st[a.id].c)n++});
+ return n;
+}
+function dot(){
+ const n=claimable();
+ document.querySelectorAll('.qdot').forEach(e=>{e.textContent=n>0?String(n):'';e.style.display=n>0?'inline-block':'none'});
+}
+
+/* ---- 畫面 ---- */
+let TAB='daily';
+function bar(p){return '<div class="qbar"><i style="width:'+Math.max(0,Math.min(100,p))+'%"></i></div>'}
+function viewDaily(){
+ const q=Q();
+ let h='<div class="hint">每天 3 個任務，完成後按「領取」。每天換新的（以你裝置的日期為準）。</div>';
+ q.ids.forEach(id=>{
+  const d=qd(id),v=Math.min(d.t,Math.floor(d.m(q.m))),done=v>=d.t,cl=q.claimed[id];
+  h+='<div class="qrow"><div class="qt"><b>'+d.n+'</b><span>'+fmt(v)+' / '+fmt(d.t)+'</span></div>'+bar(v/d.t*100)+
+   '<div class="qf"><span>獎勵 ⚡'+d.r+'　VIP 經驗 +'+d.x+'</span><button class="btn'+(done&&!cl?' gold':'')+'" data-q="c:'+id+'"'+((done&&!cl)?'':' disabled')+'>'+(cl?'已領取':done?'領取':'進行中')+'</button></div></div>';
+ });
+ const all=q.ids.every(id=>q.claimed[id]);
+ h+='<div class="qrow"><div class="qt"><b>🎁 全勤獎勵</b><span>'+q.ids.filter(id=>q.claimed[id]).length+' / 3</span></div>'+bar(q.ids.filter(id=>q.claimed[id]).length/3*100)+
+  '<div class="qf"><span>3 個任務都領完　⚡'+ALL_BONUS.r+'　VIP 經驗 +'+ALL_BONUS.x+'</span><button class="btn'+(all&&!q.bonus?' gold':'')+'" data-q="bonus"'+((all&&!q.bonus)?'':' disabled')+'>'+(q.bonus?'已領取':all?'領取':'未達成')+'</button></div></div>';
+ return h;
+}
+function viewAch(){
+ const s=S(),st=achState();let n=0;ACH.forEach(a=>{if(st[a.id])n++});
+ let h='<div class="hint">已解鎖 '+n+' / '+ACH.length+'　<button class="btn" data-q="all" style="padding:4px 12px">全部領取</button></div>';
+ ACH.forEach(a=>{
+  const u=st[a.id],cl=u&&u.c;
+  h+='<div class="qrow'+(u?'':' lock')+'"><div class="qt"><b>'+(u?(cl?'✅ ':'🎁 '):'🔒 ')+a.n+'</b><span>'+a.d+'</span></div><div class="qf"><span>獎勵 ⚡'+a.r+(a.x?'　VIP 經驗 +'+a.x:'')+'</span>'+(u&&!cl?'<button class="btn gold" data-q="a:'+a.id+'">領取</button>':'<span style="opacity:.6">'+(cl?'已領取':'未解鎖')+'</span>')+'</div></div>';
+ });
+ return h;
+}
+function viewStats(){
+ const s=S();
+ const rows=[['VIP 等級',vipN()],['累計下注',fmt(s.wager)],['下注次數',fmt(s.bets)],['派彩次數',fmt(s.wins)],['最大單次派彩',fmt(s.maxWin)],['玩過的遊戲',Object.keys(s.games).length+' 種'],['連續登入',s.streak+' 天（最長 '+s.best+' 天）'],['淨資產',fmt(net())]];
+ let h='<table style="min-width:0;margin-top:6px">'+rows.map(r=>'<tr><td>'+r[0]+'</td><td style="text-align:right;color:var(--gold);font-weight:800">'+r[1]+'</td></tr>').join('')+'</table>';
+ const zr=Object.keys(ZONES).filter(z=>ZN[z]).map(z=>'<tr><td>'+ZN[z]+'</td><td style="text-align:right">'+fmt(s.zones[z]||0)+' 次</td></tr>').join('');
+ if(zr)h+='<div class="bsec">各分區遊玩次數</div><table style="min-width:0">'+zr+'</table>';
+ return h;
+}
+function openQuest(tab){
+ if(tab)TAB=tab;
+ touchLogin();
+ const tabs=[['daily','📅 每日任務'],['ach','🏅 成就'],['stats','📊 統計']];
+ const body=TAB==='daily'?viewDaily():TAB==='ach'?viewAch():viewStats();
+ openModal('<div class="panel"><h2>📜 任務與成就</h2><div class="btns" style="margin-top:0">'+tabs.map(t=>'<button class="btn'+(TAB===t[0]?' pri':'')+'" data-q="t:'+t[0]+'">'+t[1]+'</button>').join('')+'</div><div style="text-align:left;margin-top:8px">'+body+'</div><div class="btns"><button class="btn" data-bank="close">關閉</button></div></div>');
+ dot();
+}
+function qAct(a){
+ if(a.indexOf('t:')===0){TAB=a.slice(2);openQuest();return}
+ if(a.indexOf('c:')===0){claimQ(a.slice(2));openQuest();return}
+ if(a==='bonus'){claimBonus();openQuest();return}
+ if(a.indexOf('a:')===0){claimA(a.slice(2));openQuest();return}
+ if(a==='all'){ACH.forEach(x=>claimA(x.id));openQuest()}
+}
+
+/* ---- 組裝 ---- */
+function build(){
+ if(document.head){
+  const st=document.createElement('style');
+  st.textContent=`
+.t-quest{border-color:rgba(255,196,77,.65);box-shadow:0 0 34px rgba(255,196,77,.22);background:linear-gradient(160deg,rgba(120,70,10,.6),rgba(12,16,34,.85))}.t-quest .ti{color:#ffc44d}
+.tile:hover.t-quest{box-shadow:0 0 46px rgba(255,196,77,.5)}
+.qdot{display:none;min-width:18px;height:18px;line-height:18px;border-radius:99px;background:#ff3b5c;color:#fff;font-size:11px;font-weight:900;text-align:center;padding:0 5px;margin-left:6px;vertical-align:middle}
+.qrow{padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.06);margin-top:8px}
+.qrow.lock{opacity:.6}
+.qt{display:flex;justify-content:space-between;gap:8px;font-size:14px}.qt span{opacity:.8;font-size:12.5px;text-align:right}
+.qbar{height:8px;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden;margin:6px 0}
+.qbar i{display:block;height:100%;background:linear-gradient(90deg,#00f0ff,#ffd166)}
+.qf{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px}
+.qf .btn{padding:6px 14px;font-size:13px}`;
+  document.head.appendChild(st);
+ }
+ $('#modal').addEventListener('click',e=>{const t=e.target.closest('[data-q]');if(t)qAct(t.dataset.q)});
+ document.querySelectorAll('.wbar').forEach(w=>{
+  if(w.querySelector('.qbtn'))return;
+  const b=document.createElement('button');b.className='bankbtn qbtn';b.innerHTML='📜 任務<span class="qdot"></span>';
+  b.addEventListener('click',()=>openQuest());w.appendChild(b);
+ });
+ const hub=document.querySelector('.hub');
+ if(hub){
+  const bank=hub.querySelector('.t-bank');
+  const b=document.createElement('button');b.className='tile t-quest';
+  b.innerHTML='<div class="ti">📜</div><div class="cnt">QUESTS</div><h2>任務成就<span class="qdot"></span></h2><p>每日任務、成就<br>領籌碼與 VIP 經驗</p>';
+  b.addEventListener('click',()=>openQuest());
+  if(bank)hub.insertBefore(b,bank);else hub.appendChild(b);
+ }
+ touchLogin();check();
+}
+build();
+})();
+
 /* ---------- 大廳背景 ---------- */
 (function(){
  const c=$('#bg'),x=c.getContext('2d');let pts=[];
