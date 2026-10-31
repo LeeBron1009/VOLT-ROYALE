@@ -3848,6 +3848,82 @@ function build(){
 build();
 })();
 
+/* ---------- 新功能：點「VIP」那一格，看 VIP 資訊與領每日獎勵 ---------- */
+(function(){
+const fmt=n=>Math.round(n).toLocaleString();
+const bankop=()=>typeof BANKOP!=='undefined'&&BANKOP;
+const setBankop=v=>{if(typeof BANKOP!=='undefined')BANKOP=v};
+function vipHtml(){
+ const lv=vipLv(),L=VIP[lv],nx=VIP[lv+1],w=wagered();
+ const prog=nx?Math.min(100,Math.floor((w-L.need)/(nx.need-L.need)*100)):100;
+ const ready=dailyReady();
+ const table='<table class="vt" style="min-width:0;width:100%;margin-top:6px"><tr><th>等級</th><th>累計下注</th><th>利率/時</th><th>利息上限</th><th>每日獎勵</th></tr>'+VIP.map((v,i)=>'<tr'+(i===lv?' class="me"':'')+'><td>'+v.n+'</td><td>'+fmt(v.need)+'</td><td>'+(v.rate*100).toFixed(2)+'%</td><td>'+fmt(v.cap)+'</td><td>'+fmt(v.daily)+'</td></tr>').join('')+'</table>';
+ return '<div class="panel"><h2>👑 VIP：'+L.n+'</h2>'+
+ '<div class="vipbar"><i style="width:'+prog+'%"></i></div>'+
+ '<div class="hint">累計下注 '+fmt(w)+(nx?'　距離「'+nx.n+'」還差 '+fmt(nx.need-w):'　已達最高等級')+'</div>'+
+ '<div class="rows"><div>存款利率<b>'+(L.rate*100).toFixed(2)+'% / 小時</b></div><div>利息上限<b>'+fmt(L.cap)+'</b></div><div>每日獎勵<b>'+fmt(L.daily)+'</b></div><div>'+(nx?'下一級每日獎勵':'目前存款')+'<b>'+(nx?fmt(nx.daily):fmt(savings()))+'</b></div></div>'+
+ '<div class="btns"><button class="btn gold" data-vip="daily"'+(ready?'':' disabled')+'>'+(ready?'🎁 領取今日獎勵 +'+fmt(L.daily):'今天已領取，明天再來')+'</button></div>'+
+ '<div class="bsec">所有等級</div>'+table+
+ '<div class="hint">怎麼升級：玩任何遊戲的下注都會累計；完成任務也會給 VIP 經驗。等級越高，存款利率、利息上限和每日獎勵都越好。</div>'+
+ '<div class="btns"><button class="btn" data-vip="bank">🏦 伏特銀行</button><button class="btn" data-bank="close">關閉</button></div></div>';
+}
+function openVip(){openModal(vipHtml());dot()}
+function claim(){
+ if(!dailyReady())return;
+ const amt=VIP[vipLv()].daily;
+ store.set('daily',today());
+ const prev=bankop();setBankop(true);
+ try{setChips(chips()+amt)}finally{setBankop(prev)}
+ sfx('bonus');toast('每日獎勵 +'+fmt(amt)+' 籌碼');
+ dot();
+}
+function dot(){
+ const r=typeof dailyReady==='function'&&dailyReady();
+ document.querySelectorAll('.vdot').forEach(e=>{e.style.display=r?'inline-block':'none'});
+}
+function build(){
+ if(document.head){
+  const st=document.createElement('style');
+  st.textContent=`
+.vipchip{cursor:pointer;transition:.2s;user-select:none}
+.vipchip:hover{border-color:#ffd166;box-shadow:0 0 14px rgba(255,209,102,.5);transform:translateY(-1px)}
+.vdot{display:none;width:9px;height:9px;border-radius:50%;background:#ff3b5c;box-shadow:0 0 8px #ff3b5c;margin-left:6px;vertical-align:middle}
+.bsec{margin:16px 0 4px;text-align:left;font-weight:800;letter-spacing:.1em;color:var(--gold);border-top:1px solid rgba(255,209,102,.3);padding-top:12px}
+.vipbar{height:10px;background:rgba(255,255,255,.12);border-radius:99px;overflow:hidden;margin:6px 0}.vipbar i{display:block;height:100%;background:linear-gradient(90deg,#00f0ff,#ffd166)}
+.vt tr.me td{color:#ffd166;font-weight:800}.vt th,.vt td{padding:5px 6px;font-size:12px}`;
+  document.head.appendChild(st);
+ }
+ /* 讓每一排的 VIP 格可以點 */
+ document.querySelectorAll('.w-vip').forEach(b=>{
+  const chip=b.closest('.wchip');if(!chip||chip.classList.contains('vipchip'))return;
+  chip.classList.add('vipchip');chip.title='點一下看 VIP 資訊與每日獎勵';
+  const d=document.createElement('span');d.className='vdot';chip.appendChild(d);
+  chip.addEventListener('click',openVip);
+ });
+ $('#modal').addEventListener('click',e=>{
+  const t=e.target.closest('[data-vip]');if(!t)return;
+  const a=t.dataset.vip;
+  if(a==='daily'){claim();openVip()}
+  else if(a==='bank')openBank();
+ });
+ /* 把 VIP 區塊從伏特銀行拿掉（改在 VIP 格裡看）*/
+ if(typeof bankHtml==='function'){
+  const _b=bankHtml;
+  bankHtml=function(note){
+   let h=_b(note);
+   const a=h.indexOf('<div class="bsec">👑 VIP'),b=h.indexOf('<div class="bsec">📄 借款');
+   if(a>=0&&b>a)h=h.slice(0,a)+'<div class="hint" style="margin-top:14px">👑 VIP 等級與每日獎勵，移到最上面的「VIP」那一格了，點一下就能看。</div>'+h.slice(b);
+   return h;
+  };
+ }
+ /* 錢一變動就更新紅點 */
+ if(typeof updateWallet==='function'){const _u=updateWallet;updateWallet=function(){_u();dot()}}
+ setInterval(dot,30000);
+ dot();
+}
+build();
+})();
+
 /* ---------- 大廳背景 ---------- */
 (function(){
  const c=$('#bg'),x=c.getContext('2d');let pts=[];
