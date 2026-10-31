@@ -2874,8 +2874,9 @@ const fmt=n=>Math.round(n).toLocaleString();
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const NOW=()=>performance.now();
 /* ---- 獎金表（想調難度就改這裡）---- */
+const PREVIEW_MS=2000;     // 記憶翻牌：開局先讓你看幾毫秒（2000 = 2 秒）。越短越難
 const RX_TIERS=[[180,4],[210,2.5],[240,1.8],[270,1.3],[300,1],[330,.6],[380,.3]];   // 3 次平均反應時間(ms) → 倍數，超過最後一格 = 0
-const MM_TIERS={0:2.5,1:2.5,2:2.5,3:2.5,4:1.5,5:1.1,6:.85,7:.65,8:.5,9:.35,10:.25,11:.1,12:.1};   // 失誤次數 → 倍數，更多 = 0
+const MM_TIERS={0:2,1:1.6,2:1.3,3:1,4:.8,5:.6,6:.45,7:.3,8:.2,9:.1,10:.1};          // 失誤次數 → 倍數，更多 = 0
 const SH_TIERS={18:3,19:3,20:3,17:2.5,16:2,15:1.7,14:1.4,13:1.1,12:.85,11:.65,10:.5,9:.35,8:.2,7:.1};   // 命中數 → 倍數
 const rxMult=avg=>{for(const [ub,m] of RX_TIERS)if(avg<ub)return m;return 0};
 const mmMult=miss=>MM_TIERS[miss]||0;
@@ -2894,7 +2895,7 @@ function injectCss(){
 .rxsub{font-size:14px;opacity:.9}
 .mgrid4{display:grid;grid-template-columns:repeat(4,var(--cs));gap:8px;z-index:1}
 .mc{width:var(--cs);height:var(--cs);border-radius:12px;border:2px solid rgba(255,255,255,.35);background:linear-gradient(145deg,#26407a,#142348);color:#fff;font-size:calc(var(--cs)*.5);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:transform .15s}
-.mc.up{background:#fff;color:#111;transform:rotateY(0)}.mc.done{background:#1fbf75;border-color:#fff;opacity:.85}
+.mc.up{background:#fff;color:#111;transform:rotateY(0)}.mc.done{background:#1fbf75;border-color:#fff;opacity:.85}.mc.peek{background:#fff7d6;border-color:#ffd166;box-shadow:0 0 14px rgba(255,209,102,.7)}
 .mc:not(.up):not(.done):active{transform:scale(.94)}
 .shcv{width:min(100%,360px);height:auto;border-radius:14px;background:rgba(0,0,0,.4);touch-action:none;z-index:1;cursor:crosshair}
 .ptab{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;z-index:1;max-width:560px}
@@ -2926,7 +2927,7 @@ function payTab(id,rows,cur){$('#'+id).innerHTML='<div class="ptab">'+rows.map(r
 const RX={bet:10,phase:'bet',round:0,times:[],st:'idle',t0:0,tok:0};
 function rxPaint(st,big,sub){const p=$('#rxpad');p.className='rxpad '+st;p.innerHTML='<div class="rxbig">'+big+'</div><div class="rxsub">'+(sub||'')+'</div>'}
 function rxTable(cur){
- const rows=[],names=[];let prev=0;
+ const rows=[];let prev=0;
  RX_TIERS.forEach(([ub,m],i)=>{rows.push([i,(i===0?'低於 ':prev+'~')+ub+'ms → ×'+m]);prev=ub});
  rows.push([RX_TIERS.length,'超過 '+prev+'ms → ×0']);
  payTab('rxpay',rows,cur);
@@ -2977,32 +2978,49 @@ function rxPress(ts){
 }
 function rxOpen(){fitBet(RX);RX.phase='bet';RX.st='idle';show('rx');updateWallet();rxPaint('idle','反應測試','按「開始」，變綠就點');setMsg('rxmsg','三次平均越快，倍數越高','');rxTable(-1);rxCtrl()}
 
-/* ===== 記憶翻牌 ===== */
+/* ===== 記憶翻牌（開局先看 PREVIEW_MS 毫秒，之後才開始算失誤）===== */
 const MM_EMO=['🍎','🚀','🎲','🎧','💎','🔥','🌙','🎯'];
-const MM={bet:10,phase:'bet',cards:[],open:[],miss:0,pairs:0,lock:false};
+const MM={bet:10,phase:'bet',cards:[],open:[],miss:0,pairs:0,lock:false,tok:0};
 function mmTable(cur){
- const rows=[[0,'0~3 次失誤 → ×'+MM_TIERS[3]],[4,'4 次 → ×'+MM_TIERS[4]],[5,'5 次 → ×'+MM_TIERS[5]],[6,'6 次 → ×'+MM_TIERS[6]],[7,'7 次 → ×'+MM_TIERS[7]],[8,'8 次 → ×'+MM_TIERS[8]],[9,'9 次 → ×'+MM_TIERS[9]],[10,'10 次 → ×'+MM_TIERS[10]],[11,'11~12 次 → ×'+MM_TIERS[11]],[13,'13 次以上 → ×0']];
- payTab('mmpay',rows,cur===undefined?-1:(cur<=3?0:cur>=13?13:cur===12?11:cur));
+ const rows=[];let m=0;
+ while(m<=12){
+  const v=mmMult(m);let e=m;
+  while(e+1<=12&&mmMult(e+1)===v&&v>0)e++;
+  if(v===0){rows.push([m,(m)+' 次以上 → ×0']);break}
+  rows.push([m,(e>m?m+'~'+e:m)+' 次失誤 → ×'+v]);
+  m=e+1;
+ }
+ let on=-1;if(cur!==undefined&&cur>=0){for(const r of rows){if(cur>=r[0])on=r[0]}}
+ payTab('mmpay',rows,on);
 }
 function mmRender(){
  const cs=Math.max(54,Math.min(92,Math.floor((Math.min($('#mm-felt').clientWidth||360,440)-24-3*8)/4)));
+ const pv=MM.phase==='preview';
  let h='<div class="mgrid4" style="--cs:'+cs+'px">';
- MM.cards.forEach((c,i)=>{h+='<button class="mc'+(c.up?' up':'')+(c.done?' done':'')+'" data-c="'+i+'">'+((c.up||c.done)?MM_EMO[c.v]:'❓')+'</button>'});
+ MM.cards.forEach((c,i)=>{h+='<button class="mc'+(pv?' peek':'')+(c.up&&!pv?' up':'')+(c.done?' done':'')+'" data-c="'+i+'">'+((c.up||c.done||pv)?MM_EMO[c.v]:'❓')+'</button>'});
  $('#mmgrid').innerHTML=h+'</div>';
- $('#mminfo').textContent=MM.phase==='play'?'失誤 '+MM.miss+' 次　已配對 '+MM.pairs+' / 8':'';
+ $('#mminfo').textContent=MM.phase==='play'?'失誤 '+MM.miss+' 次　已配對 '+MM.pairs+' / 8':(pv?'先記住每張牌的位置':'');
 }
 function mmCtrl(){
- const busy=MM.phase==='play';
- $('#mm-ctrl').innerHTML=busy?'<div class="betline">押注 <b>'+fmt(MM.bet)+'</b>　配對時失誤越少，倍數越高</div>':betRow(MM,false)+'<div class="row"><button class="btn gold spinbtn" data-a="start"'+(chips()>=MM.bet?'':' disabled')+'>開始 ▶</button></div>';
+ const busy=MM.phase!=='bet';
+ $('#mm-ctrl').innerHTML=busy?'<div class="betline">押注 <b>'+fmt(MM.bet)+'</b>　配對時失誤越少，倍數越高</div>':betRow(MM,false)+'<div class="row"><button class="btn gold spinbtn" data-a="start"'+(chips()>=MM.bet?'':' disabled')+'>開始 ▶</button></div><div class="hint" style="text-align:center">按下開始後，所有牌會先翻開 '+(PREVIEW_MS/1000)+' 秒讓你記位置，蓋回去之後才開始算失誤</div>';
 }
 function mmStart(){
- if(MM.phase==='play')return;
+ if(MM.phase!=='bet')return;
  if(chips()<MM.bet){openBank('籌碼不足。');return}
  setChips(chips()-MM.bet);
  const vals=[];for(let i=0;i<8;i++){vals.push(i);vals.push(i)}
  for(let i=vals.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[vals[i],vals[j]]=[vals[j],vals[i]]}
- MM.cards=vals.map(v=>({v,up:false,done:false}));MM.open=[];MM.miss=0;MM.pairs=0;MM.lock=false;MM.phase='play';
- setMsg('mmmsg','翻兩張一樣的','');mmTable();mmRender();mmCtrl();
+ MM.cards=vals.map(v=>({v,up:false,done:false}));MM.open=[];MM.miss=0;MM.pairs=0;MM.lock=false;MM.phase='preview';
+ const tok=++MM.tok;let left=PREVIEW_MS;
+ mmTable();mmRender();mmCtrl();
+ const tick=()=>{
+  if(tok!==MM.tok||MM.phase!=='preview')return;
+  if(left<=0){MM.phase='play';setMsg('mmmsg','開始！翻兩張一樣的','');mmRender();mmCtrl();return}
+  setMsg('mmmsg','👀 記住位置！'+(left/1000).toFixed(1)+' 秒','');
+  left-=100;setTimeout(tick,100);
+ };
+ tick();
 }
 function mmFlip(i){
  if(MM.phase!=='play'||MM.lock)return;
@@ -3027,7 +3045,7 @@ function mmFinish(){
  if(net>0)sfx('bonus');else sfx('drain');
  mmRender();mmCtrl();
 }
-function mmOpen(){fitBet(MM);MM.phase='bet';MM.cards=Array.from({length:16},()=>({v:0,up:false,done:false}));show('mm');updateWallet();setMsg('mmmsg','失誤越少，倍數越高','');mmTable();mmRender();mmCtrl()}
+function mmOpen(){fitBet(MM);MM.tok++;MM.phase='bet';MM.cards=Array.from({length:16},()=>({v:0,up:false,done:false}));show('mm');updateWallet();setMsg('mmmsg','開始前會先讓你看一下所有牌','');mmTable();mmRender();mmCtrl()}
 
 /* ===== 射擊 ===== */
 const SH_N=20,SH_R=28,SH_L0=900,SH_L1=450,SW=340,SHH=380;
@@ -3110,8 +3128,8 @@ function build(){
  mk('mm','MEMORY 記憶翻牌','MEMORY MATCH');
  $('#mm-felt').innerHTML='<div class="msg" id="mmmsg"></div><div id="mminfo" class="hint" style="z-index:1"></div><div id="mmgrid"></div><div id="mmpay" style="width:100%"></div>';
  $('#mm-felt').addEventListener('click',e=>{const b=e.target.closest('[data-c]');if(b)mmFlip(+b.dataset.c)});
- $('#mm-ctrl').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;if(a==='start')mmStart();else if(MM.phase!=='play'){stepBet(MM,a);mmCtrl()}});
- $('#mm-back').addEventListener('click',()=>{if(MM.phase==='play'){toast('進行中，離開會輸掉押注');return}home()});
+ $('#mm-ctrl').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;if(a==='start')mmStart();else if(MM.phase==='bet'){stepBet(MM,a);mmCtrl()}});
+ $('#mm-back').addEventListener('click',()=>{if(MM.phase!=='bet'){toast('進行中，離開會輸掉押注');return}home()});
  mk('sh','SHOOT 射擊','TARGET PRACTICE');
  $('#sh-felt').innerHTML='<div class="msg" id="shmsg"></div><canvas id="shcv" class="shcv" width="'+SW+'" height="'+SHH+'"></canvas><div id="shpay" style="width:100%"></div>';
  $('#shcv').addEventListener('pointerdown',e=>{
@@ -3123,7 +3141,7 @@ function build(){
  const art=(bg,inner)=>'<div class="art" style="display:flex;align-items:center;justify-content:center;gap:10px;background:'+bg+';font-size:46px">'+inner+'</div>';
  ZONES.skill={t:'技能區',s:'SKILL GAMES',games:()=>[
   {cls:'slc',vars:'--ac:#14b86a;--abg:#0c3a28',art:art('#0c3a28','<span style="display:inline-block;width:86px;height:64px;border-radius:14px;background:#14b86a;box-shadow:0 0 18px #14b86a;font-size:18px;font-weight:900;color:#fff;line-height:64px;text-align:center">點！</span><span style="font-size:22px;font-weight:900;color:#fff">187ms</span>'),en:'REACTION · 3 ROUNDS',h:'反應測試 REACTION',p:'畫面變綠就點。連測三次，用平均時間算倍數，點太早就輸。手越快，賺越多。',tags:['三次平均','點太早算輸','拼手速'],price:['每局 5 ~ 100','最高 4×'],note:'三次平均低於 300ms 不虧，越快賺越多',btn:'開始 ▶',go:rxOpen},
-  {cls:'slc',vars:'--ac:#9b5cff;--abg:#1d1140',art:art('#1d1140','🚀 💎 <span style="font-size:36px">❓</span> 🔥'),en:'MEMORY · 8 PAIRS',h:'記憶翻牌 MEMORY',p:'16 張牌 8 對，翻兩張一樣的就配對成功。失誤越少，倍數越高，全看你的記憶力。',tags:['4×4','8 對','失誤越少越賺'],price:['每局 5 ~ 100','最高 2.5×'],note:'失誤 5 次以內不虧',btn:'開始 ▶',go:mmOpen},
+  {cls:'slc',vars:'--ac:#9b5cff;--abg:#1d1140',art:art('#1d1140','🚀 💎 <span style="font-size:36px">❓</span> 🔥'),en:'MEMORY · 8 PAIRS',h:'記憶翻牌 MEMORY',p:'16 張牌 8 對。開局先讓你看 '+(PREVIEW_MS/1000)+' 秒，蓋回去後翻兩張一樣的來配對。失誤越少，倍數越高。',tags:['先看再翻','8 對','失誤越少越賺'],price:['每局 5 ~ 100','最高 2×'],note:'失誤 3 次以內不虧',btn:'開始 ▶',go:mmOpen},
   {cls:'slc',vars:'--ac:#ff5a5f;--abg:#2a0d12',art:art('#2a0d12','<i style="display:block;width:78px;height:78px;border-radius:50%;background:radial-gradient(circle,#e63946 0 16%,#fff 17% 40%,#e63946 41% 72%,#fff 73%);box-shadow:0 0 18px rgba(230,57,70,.6)"></i>'),en:'TARGET · 20 SHOTS',h:'射擊 SHOOT',p:'靶心一個一個出現，而且越來越快消失。20 個裡面打中越多，倍數越高。',tags:['20 個靶','越來越快','拼準度'],price:['每局 5 ~ 100','最高 3×'],note:'打中 13 個以上不虧',btn:'開始 ▶',go:shOpen}
  ],info:'<h3>技能區怎麼算</h3>這裡的結果主要看你的技術，不是純運氣：普通玩家大多會小虧，技術好的玩家可以賺錢。為了避免被鑽漏洞，每局最多押 100，獎金表我用電腦模擬估算過，實際難度可能要依你的手機或電腦調整。'};
  const hub=document.querySelector('.hub');
