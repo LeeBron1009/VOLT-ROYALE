@@ -2105,7 +2105,315 @@ function build(){
 }
 build();
 })();
- 
+
+
+/* ---------- 新分區：幸運彩券區（幸運轉盤・刮刮樂・開箱抽獎）---------- */
+(function(){
+const STEPS=[5,10,25,50,100,250,500,1000];
+const fmt=n=>Math.round(n).toLocaleString();
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const pendSet=v=>store.set('pend',v);
+const NOW=()=>performance.now();
+function injectCss(){
+ if(!document.head)return;
+ const st=document.createElement('style');
+ st.textContent=`
+.t-lottery{border-color:rgba(255,209,102,.65);box-shadow:0 0 34px rgba(255,209,102,.22);background:linear-gradient(160deg,rgba(150,90,10,.6),rgba(40,10,60,.8))}.t-lottery .ti{color:#ffd166}
+.tile:hover.t-lottery{box-shadow:0 0 46px rgba(255,209,102,.5)}
+.felt.bscroll{justify-content:flex-start;gap:10px;overflow-y:auto}.felt.bscroll::after{display:none}
+.opt{padding:8px 14px;border-radius:999px;border:1px solid var(--gold);background:rgba(255,209,102,.08);color:var(--gold);font-weight:800}
+.opt.on{background:var(--gold);color:#221400}
+.hist{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;z-index:1;min-height:26px}
+.hist i{font-style:normal;font-size:12px;font-weight:800;min-width:30px;padding:3px 7px;border-radius:99px;text-align:center;background:#333;color:#fff}
+.hist i.w{background:#0b7a3b}.hist i.l{background:#8a2230}
+.scwrap{position:relative;width:var(--sw);height:var(--sw);border-radius:16px;overflow:hidden;box-shadow:0 0 0 4px #ffd166,0 10px 30px rgba(0,0,0,.6);z-index:1;background:linear-gradient(145deg,#fff6d8,#f1d98a)}
+.scgrid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);width:100%;height:100%;gap:2px;padding:2px}
+.sccell{display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(255,255,255,.55);border-radius:10px;font-size:calc(var(--sw)*.16);line-height:1.1}
+.sccell small{font-size:calc(var(--sw)*.065);font-weight:800;color:#7a4b00}
+.sccell.hit{background:#fff3a8;box-shadow:inset 0 0 0 3px #ff9f1c;animation:hitp .5s ease-in-out infinite alternate}
+.sccv{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.bxwin{position:relative;width:100%;max-width:520px;height:110px;overflow:hidden;border-radius:14px;background:rgba(0,0,0,.45);border:2px solid rgba(255,209,102,.6);z-index:1}
+.bxwin::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:3px;background:#ffd166;box-shadow:0 0 12px #ffd166;transform:translateX(-50%);z-index:3}
+.bxstrip{position:absolute;left:0;top:0;height:100%;display:flex;will-change:transform}
+.bxi{flex:none;width:92px;margin:8px 2px;height:94px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(255,255,255,.07);border-bottom:5px solid var(--rc);font-size:36px}
+.bxi b{font-size:13px;color:#fff;margin-top:2px}
+.bxi.win{background:rgba(255,209,102,.25)}
+`;
+ document.head.appendChild(st);
+}
+function mk(id,title,t){
+ const d=document.createElement('div');d.id=id;d.className='tbl';
+ d.innerHTML='<div class="bjbar"><button class="ib" id="'+id+'-back">⌂</button><div class="t">'+title+'</div><div style="display:flex;gap:8px;align-items:center"><div class="wchip">⚡<b class="w-chips">0</b></div><button class="ib bankbtn" data-openbank style="width:auto;padding:0 10px">🏦</button></div></div><div class="felt bscroll" id="'+id+'-felt" data-t="'+t+'"></div><div class="ctrl" id="'+id+'-ctrl"></div>';
+ document.body.appendChild(d);TBLS.push(id);
+ const ob=d.querySelector('[data-openbank]');if(ob)ob.addEventListener('click',()=>openBank());
+ return d;
+}
+function stepBet(o,a){
+ const i=STEPS.indexOf(o.bet),ch=chips();
+ if(a==='dn'){if(i>0)o.bet=STEPS[i-1]}
+ else if(a==='up'){if(i<STEPS.length-1&&STEPS[i+1]<=ch)o.bet=STEPS[i+1];else if(i<STEPS.length-1)toast('籌碼不夠再加')}
+ else if(a==='max'){let b=STEPS[0];for(const s of STEPS)if(s<=ch)b=s;o.bet=b}
+}
+function fitBet(o){const ch=chips();let b=STEPS[0];for(const s of STEPS)if(s<=Math.min(o.bet,Math.max(ch,5)))b=s;o.bet=b}
+function betRow(o,dis,label){return '<div class="betline">'+(label||'押注')+' <b>'+fmt(o.bet)+'</b>　<span style="opacity:.7">籌碼 '+fmt(chips())+'</span></div><div class="row"><button class="btn" data-a="dn"'+(dis?' disabled':'')+'>－</button><button class="btn" data-a="max"'+(dis?' disabled':'')+'>MAX</button><button class="btn" data-a="up"'+(dis?' disabled':'')+'>＋</button></div>'}
+function setMsg(id,t,c){const e=$('#'+id);if(e){e.textContent=t;e.className='msg '+(c||'')}}
+function wpickP(ps){let r=Math.random();for(let i=0;i<ps.length;i++){r-=ps[i];if(r<0)return i}return ps.length-1}
+
+/* ===== 幸運轉盤 ===== */
+const WHEELS={
+ safe:{n:'穩健輪',vals:[0,0.5,1,1.5,2,3,5],counts:[7,6,5,2,2,1,1]},
+ risk:{n:'豪賭輪',vals:[0,1,2,5,10],counts:[21,3,3,2,1]}
+};
+const WCOL={0:'#2b2f3a',0.5:'#3b5b9d',1:'#1f8f8a',1.5:'#2fa84f',2:'#c9a227',3:'#e07b1f',5:'#d6336c',10:'#e03131'};
+function whSegs(key){
+ const W=WHEELS[key],list=[];
+ W.vals.forEach((v,i)=>{for(let c=0;c<W.counts[i];c++)list.push(v)});
+ list.sort((a,b)=>b-a);
+ const n=list.length,out=new Array(n);
+ for(let i=0;i<n;i++)out[(i*7)%n]=list[i];
+ return out;
+}
+const WH={bet:10,wheel:'safe',phase:'bet',ang:0,hist:[]};
+WH.segs=whSegs('safe');
+function whDraw(w){
+ const cv=$('#whcv'),ctx=cv.getContext('2d'),C=220,R=205,n=WH.segs.length,seg=2*Math.PI/n;
+ ctx.clearRect(0,0,440,440);
+ ctx.beginPath();ctx.arc(C,C,216,0,7);ctx.fillStyle='#3a2a12';ctx.fill();
+ for(let i=0;i<n;i++){
+  const v=WH.segs[i],a0=w-Math.PI/2+i*seg,a1=a0+seg;
+  ctx.beginPath();ctx.moveTo(C,C);ctx.arc(C,C,R,a0,a1);ctx.closePath();
+  ctx.fillStyle=WCOL[v]||'#444';ctx.fill();ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=2;ctx.stroke();
+  ctx.save();ctx.translate(C,C);ctx.rotate((a0+a1)/2);ctx.fillStyle='#fff';ctx.font='bold 22px sans-serif';ctx.textAlign='right';ctx.textBaseline='middle';
+  ctx.fillText(v+'×',R-14,0);ctx.restore();
+ }
+ ctx.beginPath();ctx.arc(C,C,46,0,7);ctx.fillStyle='#ffd166';ctx.fill();ctx.strokeStyle='#7a4b00';ctx.lineWidth=4;ctx.stroke();
+ ctx.fillStyle='#4a2a00';ctx.font='bold 30px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('⚡',C,C+2);
+ ctx.beginPath();ctx.moveTo(C-16,0);ctx.lineTo(C+16,0);ctx.lineTo(C,34);ctx.closePath();ctx.fillStyle='#fff';ctx.shadowColor='#000';ctx.shadowBlur=8;ctx.fill();ctx.shadowBlur=0;
+}
+function whLegend(){
+ const W=WHEELS[WH.wheel];
+ $('#whlegend').textContent=W.n+'：'+W.vals.map((v,i)=>v+'× 有 '+W.counts[i]+' 格').join('　')+'（共 '+WH.segs.length+' 格，理論回報率 '+(W.vals.reduce((s,v,i)=>s+v*W.counts[i],0)/WH.segs.length*100).toFixed(1)+'%）';
+}
+function whCtrl(){
+ const busy=WH.phase!=='bet';
+ $('#wh-ctrl').innerHTML=betRow(WH,busy)+
+ '<div class="row">'+Object.keys(WHEELS).map(k=>'<button class="opt'+(WH.wheel===k?' on':'')+'" data-a="w'+k+'"'+(busy?' disabled':'')+'>'+WHEELS[k].n+'</button>').join('')+'</div>'+
+ '<div class="row"><button class="btn gold spinbtn" data-a="spin"'+((busy||chips()<WH.bet)?' disabled':'')+'>轉！</button></div>';
+}
+function whHist(){$('#whhist').innerHTML=WH.hist.map(h=>'<i class="'+(h>=1?'w':'l')+'">'+h+'×</i>').join('')}
+function whAnimate(idx){
+ return new Promise(res=>{
+  const n=WH.segs.length,seg=2*Math.PI/n,T=4800,t0=NOW(),cur=WH.ang,two=2*Math.PI;
+  const jitter=(Math.random()-.5)*seg*.6,tm=-(idx+.5)*seg+jitter;
+  const delta=(((tm-cur)%two)+two)%two,total=5*two+delta;
+  function frame(){
+   const p=Math.min(1,(NOW()-t0)/T),e=1-Math.pow(1-p,3);
+   whDraw(cur+total*e);
+   if(p<1)requestAnimationFrame(frame);else{WH.ang=(cur+total)%two;res()}
+  }
+  requestAnimationFrame(frame);
+ });
+}
+async function whSpin(){
+ if(WH.phase!=='bet')return;
+ if(chips()<WH.bet){openBank('籌碼不足。');return}
+ const bet=WH.bet,idx=Math.floor(Math.random()*WH.segs.length),v=WH.segs[idx],ret=Math.round(bet*v);
+ setChips(chips()-bet);pendSet(ret);WH.phase='spin';whCtrl();setMsg('whmsg','旋轉中⋯','');sfx('launch');
+ await whAnimate(idx);
+ if(ret>0)setChips(chips()+ret);
+ pendSet(0);
+ WH.hist.unshift(v);WH.hist=WH.hist.slice(0,14);
+ const net=ret-bet;
+ setMsg('whmsg',v+'×　'+signed(net),net>0?'win':net<0?'lose':'push');
+ if(net>0)sfx('bonus');else if(net<0)sfx('drain');else sfx('target');
+ WH.phase='bet';whCtrl();whHist();
+}
+function whAct(a){
+ if(WH.phase!=='bet')return;
+ if(a==='dn'||a==='up'||a==='max'){stepBet(WH,a);whCtrl();return}
+ if(a[0]==='w'){WH.wheel=a.slice(1);WH.segs=whSegs(WH.wheel);whLegend();whDraw(WH.ang);whCtrl();return}
+ if(a==='spin')whSpin();
+}
+function whOpen(){fitBet(WH);WH.phase='bet';show('wh');updateWallet();WH.segs=whSegs(WH.wheel);whLegend();whDraw(WH.ang);whCtrl();whHist()}
+
+/* ===== 刮刮樂 ===== */
+const SC_PRIZE=[{e:'🍒',v:1},{e:'🍋',v:2},{e:'🔔',v:5},{e:'⭐',v:10},{e:'💎',v:50},{e:'👑',v:200}];
+const SC_DECOY=['🍀','🎲'];
+const SC_ALL=SC_PRIZE.map(p=>p.e).concat(SC_DECOY);
+const SC_DIST=[[1,.10],[2,.06],[5,.04],[10,.02],[50,.004],[200,.0006]];
+function scDraw(){const r=Math.random();let a=0;for(const [v,p] of SC_DIST){a+=p;if(r<a)return v}return 0}
+function shuf(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function scGen(){
+ const v=scDraw();let cells;
+ if(v>0){
+  const w=SC_PRIZE.find(p=>p.v===v).e,pool=[];
+  SC_ALL.forEach(e=>{if(e!==w){pool.push(e);pool.push(e)}});
+  cells=[w,w,w].concat(shuf(pool).slice(0,6));
+ }else{
+  const pool=[];SC_ALL.forEach(e=>{pool.push(e);pool.push(e)});
+  cells=shuf(pool).slice(0,9);
+ }
+ return{cells:shuf(cells),v};
+}
+function scEval(cells){
+ const cnt={};cells.forEach(e=>cnt[e]=(cnt[e]||0)+1);
+ for(const p of SC_PRIZE)if(cnt[p.e]>=3)return p.v;
+ return 0;
+}
+const SC={bet:10,phase:'bet',card:null,paid:false,drag:false,t:0};
+function scRender(){
+ const sw=Math.max(200,Math.min(320,($('#sc-felt').clientWidth||340)-40));
+ let g='';
+ if(SC.card)g=SC.card.cells.map((e,i)=>{const pv=SC_PRIZE.find(p=>p.e===e);return '<div class="sccell" data-i="'+i+'">'+e+'<small>'+(pv?pv.v+'×':'')+'</small></div>'}).join('');
+ else g=Array(9).fill('<div class="sccell">❓</div>').join('');
+ $('#sc-felt').innerHTML='<div class="scwrap" id="scwrap" style="--sw:'+sw+'px"><div class="scgrid">'+g+'</div>'+(SC.card&&SC.phase==='scratch'?'<canvas class="sccv" id="sccv" width="'+sw+'" height="'+sw+'"></canvas>':'')+'</div><div class="msg" id="scmsg">'+(SC.card?'':'買一張，然後用手指刮開')+'</div><div class="hint" style="z-index:1;text-align:center">刮出 3 個一樣的圖案，就拿該圖案的倍數。圖案下面的數字就是倍數。</div>';
+ if(SC.card&&SC.phase==='scratch')scPaint();
+}
+function scPaint(){
+ const cv=$('#sccv');if(!cv)return;const ctx=cv.getContext('2d'),w=cv.width;
+ const g=ctx.createLinearGradient(0,0,w,w);g.addColorStop(0,'#cfd3da');g.addColorStop(.5,'#f4f6f9');g.addColorStop(1,'#aab0ba');
+ ctx.fillStyle=g;ctx.fillRect(0,0,w,w);
+ ctx.fillStyle='rgba(0,0,0,.18)';ctx.font='bold '+Math.floor(w/9)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+ for(let i=0;i<3;i++)for(let j=0;j<3;j++)ctx.fillText('刮',w*(j+.5)/3,w*(i+.5)/3);
+ const pos=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*cv.width/(r.width||cv.width),y:(e.clientY-r.top)*cv.height/(r.height||cv.height)}};
+ const erase=e=>{const p=pos(e);ctx.globalCompositeOperation='destination-out';ctx.beginPath();ctx.arc(p.x,p.y,Math.max(16,w/11),0,7);ctx.fill();ctx.globalCompositeOperation='source-over'};
+ cv.addEventListener('pointerdown',e=>{SC.drag=true;try{cv.setPointerCapture(e.pointerId)}catch(_){}erase(e);e.preventDefault()});
+ cv.addEventListener('pointermove',e=>{if(!SC.drag)return;erase(e);const n=NOW();if(n-SC.t>180){SC.t=n;scCheck()}});
+ ['pointerup','pointercancel'].forEach(ev=>cv.addEventListener(ev,()=>{SC.drag=false;scCheck()}));
+}
+function scCheck(){
+ const cv=$('#sccv');if(!cv||SC.phase!=='scratch')return;
+ try{
+  const ctx=cv.getContext('2d'),w=cv.width,d=ctx.getImageData(0,0,w,w).data;let clear=0,tot=0;
+  for(let y=4;y<w;y+=8)for(let x=4;x<w;x+=8){tot++;if(d[(y*w+x)*4+3]<80)clear++}
+  if(clear/tot>=.55)scFinish();
+ }catch(e){}
+}
+function scCtrl(){
+ if(SC.phase==='scratch'){
+  $('#sc-ctrl').innerHTML='<div class="betline">這張 <b>'+fmt(SC.bet)+'</b>　用手指刮開銀色區域</div><div class="row"><button class="btn gold spinbtn" data-a="reveal">全部刮開</button></div>';
+ }else{
+  $('#sc-ctrl').innerHTML=betRow(SC,false,'單張價格')+'<div class="row"><button class="btn gold spinbtn" data-a="buy"'+(chips()>=SC.bet?'':' disabled')+'>'+(SC.card?'再買一張 ▶':'買一張 ▶')+'</button></div>';
+ }
+}
+function scFinish(){
+ if(SC.phase!=='scratch')return;
+ SC.phase='bet';
+ const v=scEval(SC.card.cells),ret=Math.round(SC.bet*v),net=ret-SC.bet;
+ if(ret>0)setChips(chips()+ret);
+ pendSet(0);
+ const cv=$('#sccv');if(cv)cv.style.display='none';
+ const win=SC_PRIZE.find(p=>p.v===v);
+ if(win)document.querySelectorAll('.sccell').forEach(c=>{if(c.textContent.indexOf(win.e)===0)c.classList.add('hit')});
+ setMsg('scmsg',v>0?'中獎！'+v+'×　'+signed(net):'沒中，再試一張　-'+fmt(SC.bet),v>0?'win':'lose');
+ if(v>0)sfx('bonus');else sfx('drain');
+ scCtrl();
+}
+function scAct(a){
+ if(SC.phase==='scratch'){if(a==='reveal')scFinish();return}
+ if(a==='dn'||a==='up'||a==='max'){stepBet(SC,a);scCtrl();return}
+ if(a==='buy'){
+  if(chips()<SC.bet){openBank('籌碼不足。');return}
+  setChips(chips()-SC.bet);
+  SC.card=scGen();SC.phase='scratch';pendSet(Math.round(SC.bet*scEval(SC.card.cells)));
+  sfx('chip');scRender();scCtrl();
+ }
+}
+function scOpen(){fitBet(SC);if(SC.phase==='scratch')scFinish();SC.phase='bet';SC.card=null;show('sc');updateWallet();scRender();scCtrl()}
+
+/* ===== 開箱抽獎 ===== */
+const BOXES={"bronze": {"vals": [0.3, 0.6, 1, 2, 5, 20], "p": [0.3013, 0.3827, 0.2, 0.08, 0.03, 0.006]}, "silver": {"vals": [0.3, 0.6, 1, 2, 5, 15, 60], "p": [0.2397, 0.5218, 0.15, 0.06, 0.02, 0.007, 0.0015]}, "gold": {"vals": [0.1, 0.5, 1, 3, 10, 50, 200], "p": [0.2188, 0.5662, 0.15, 0.05, 0.012, 0.0025, 0.0005]}};
+const BX_META={bronze:{n:'銅箱',price:20,e:'📦'},silver:{n:'銀箱',price:100,e:'🎁'},gold:{n:'金箱',price:500,e:'👑'}};
+const BX_ICON=['🔩','🔋','🎧','⌚','🎮','💎','👑'];
+const BX_COL=['#8a8f98','#4b69ff','#8847ff','#d32ce6','#eb4b4b','#ffd166','#ffd166'];
+const BX={tier:'bronze',phase:'bet',skip:false,hist:[]};
+function bxItem(t,i){const v=BOXES[t].vals[i];return '<div class="bxi" style="--rc:'+BX_COL[i]+'"><span>'+BX_ICON[i]+'</span><b>×'+v+'</b></div>'}
+function bxStrip(t,winIdx,winI){
+ const n=46,items=[];
+ for(let k=0;k<n;k++)items.push(k===winIdx?winI:wpickP(BOXES[t].p));
+ return items;
+}
+function bxRenderStrip(t,items,winIdx){
+ $('#bxstrip').style.transition='none';$('#bxstrip').style.transform='translateX(0px)';
+ $('#bxstrip').innerHTML=items.map((it,k)=>bxItem(t,it).replace('class="bxi"','class="bxi'+(k===winIdx?' win':'')+'"')).join('');
+}
+function bxCtrl(){
+ const busy=BX.phase!=='bet',ch=chips();
+ $('#bx-ctrl').innerHTML='<div class="betline">'+BX_META[BX.tier].n+'　價格 <b>'+fmt(BX_META[BX.tier].price)+'</b>　<span style="opacity:.7">籌碼 '+fmt(ch)+'</span></div>'+
+ '<div class="row">'+Object.keys(BX_META).map(k=>'<button class="opt'+(BX.tier===k?' on':'')+'" data-a="t'+k+'"'+(busy?' disabled':'')+'>'+BX_META[k].e+' '+BX_META[k].n+' '+BX_META[k].price+'</button>').join('')+'</div>'+
+ '<div class="row"><button class="btn gold spinbtn" data-a="open"'+((busy||ch<BX_META[BX.tier].price)?' disabled':'')+'>開箱！</button><button class="btn'+(BX.skip?' pri':'')+'" data-a="skip">⚡ 快速</button><button class="btn" data-a="info">機率</button></div>';
+}
+function bxHist(){$('#bxhist').innerHTML=BX.hist.map(h=>'<i class="'+(h>=1?'w':'l')+'">'+h+'×</i>').join('')}
+function bxInfo(){
+ const b=BOXES[BX.tier],rows=b.vals.map((v,i)=>'<tr><td>'+BX_ICON[i]+'</td><td>×'+v+'</td><td>'+(b.p[i]*100).toFixed(2)+'%</td><td>'+fmt(BX_META[BX.tier].price*v)+'</td></tr>').join('');
+ const rtp=b.vals.reduce((s,v,i)=>s+v*b.p[i],0)*100;
+ openModal('<div class="panel"><h2>'+BX_META[BX.tier].n+' 機率</h2><div class="hint">理論回報率 '+rtp.toFixed(1)+'%</div><table style="min-width:0;margin-top:8px"><tr><th>物品</th><th>倍數</th><th>機率</th><th>價值</th></tr>'+rows+'</table><div class="btns"><button class="btn" data-bank="close">關閉</button></div></div>');
+}
+async function bxOpenBox(){
+ if(BX.phase!=='bet')return;
+ const t=BX.tier,price=BX_META[t].price;
+ if(chips()<price){openBank('籌碼不足。');return}
+ const i=wpickP(BOXES[t].p),v=BOXES[t].vals[i],ret=Math.round(price*v);
+ setChips(chips()-price);pendSet(ret);BX.phase='spin';bxCtrl();setMsg('bxmsg','開箱中⋯','');sfx('launch');
+ const winIdx=38,items=bxStrip(t,winIdx,i);
+ bxRenderStrip(t,items,winIdx);
+ const strip=$('#bxstrip'),win=$('#bxwin'),ww=(win&&win.clientWidth)||360;
+ const target=-(winIdx*96+48-ww/2)+Math.round((Math.random()-.5)*50);
+ if(BX.skip){strip.style.transform='translateX('+target+'px)';await wait(500)}
+ else{void strip.offsetWidth;strip.style.transition='transform 4.8s cubic-bezier(.08,.6,.12,1)';strip.style.transform='translateX('+target+'px)';await wait(5000)}
+ if(ret>0)setChips(chips()+ret);
+ pendSet(0);
+ BX.hist.unshift(v);BX.hist=BX.hist.slice(0,14);
+ const net=ret-price;
+ setMsg('bxmsg',BX_ICON[i]+' ×'+v+'　'+signed(net),net>0?'win':net<0?'lose':'push');
+ if(net>0)sfx('bonus');else sfx('drain');
+ BX.phase='bet';bxCtrl();bxHist();
+}
+function bxAct(a){
+ if(a==='info'){bxInfo();return}
+ if(a==='skip'){BX.skip=!BX.skip;bxCtrl();return}
+ if(BX.phase!=='bet')return;
+ if(a[0]==='t'){BX.tier=a.slice(1);bxCtrl();bxPreview();return}
+ if(a==='open')bxOpenBox();
+}
+function bxPreview(){const t=BX.tier,items=[];for(let k=0;k<46;k++)items.push(wpickP(BOXES[t].p));bxRenderStrip(t,items,-1)}
+function bxOpen(){BX.phase='bet';show('bx');updateWallet();bxPreview();bxCtrl();bxHist()}
+
+/* ===== 組裝 ===== */
+function build(){
+ injectCss();
+ mk('wh','LUCKY WHEEL 幸運轉盤','LUCKY WHEEL');
+ $('#wh-felt').innerHTML='<canvas id="whcv" width="440" height="440" style="width:min(300px,76vw);height:auto;z-index:1"></canvas><div class="msg" id="whmsg">選一個輪盤，然後按「轉」</div><div class="hist" id="whhist"></div><div class="hint" id="whlegend" style="z-index:1;text-align:center"></div>';
+ $('#wh-ctrl').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b)whAct(b.dataset.a)});
+ $('#wh-back').addEventListener('click',()=>{if(WH.phase!=='bet'){toast('等轉盤停下來');return}home()});
+ mk('sc','SCRATCH 刮刮樂','SCRATCH CARD');
+ $('#sc-felt').addEventListener('click',()=>{});
+ $('#sc-ctrl').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b)scAct(b.dataset.a)});
+ $('#sc-back').addEventListener('click',()=>{if(SC.phase==='scratch')scFinish();home()});
+ mk('bx','MYSTERY BOX 開箱抽獎','MYSTERY BOX');
+ $('#bx-felt').innerHTML='<div class="bxwin" id="bxwin"><div class="bxstrip" id="bxstrip"></div></div><div class="msg" id="bxmsg">選一個箱子，然後開箱</div><div class="hist" id="bxhist"></div><div class="hint" style="z-index:1;text-align:center">箱子越貴，大獎越大，但小獎也更常見。按「機率」看每個物品的機率。</div>';
+ $('#bx-ctrl').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b)bxAct(b.dataset.a)});
+ $('#bx-back').addEventListener('click',()=>{if(BX.phase!=='bet'){toast('等箱子開完');return}home()});
+
+ const art=(bg,inner)=>'<div class="art" style="display:flex;align-items:center;justify-content:center;gap:8px;background:'+bg+';font-size:48px">'+inner+'</div>';
+ ZONES.lottery={t:'幸運彩券區',s:'LUCKY DRAW',games:()=>[
+  {cls:'slc',vars:'--ac:#ffd166;--abg:radial-gradient(ellipse at 50% 100%,#5a3a00,#120a00)',art:art('radial-gradient(ellipse at 50% 100%,#5a3a00,#120a00)','<i style="display:block;width:96px;height:96px;border-radius:50%;background:conic-gradient(#e03131 0 30deg,#2b2f3a 30deg 80deg,#c9a227 80deg 130deg,#1f8f8a 130deg 190deg,#d6336c 190deg 230deg,#2fa84f 230deg 300deg,#3b5b9d 300deg 360deg);border:5px solid #ffd166;box-shadow:0 0 18px rgba(255,209,102,.6)"></i>'),en:'WHEEL OF FORTUNE',h:'幸運轉盤 LUCKY WHEEL',p:'一個大轉盤，指針停在哪格就乘上那格的倍數。穩健輪常常小贏，豪賭輪很少中、但最高 10 倍。',tags:['兩種輪盤','秒玩','看運氣'],price:['每轉 5 ~ 1,000','最高 10×'],note:'理論回報率約 96%',btn:'轉 ▶',go:whOpen},
+  {cls:'slc',vars:'--ac:#c0c7d4;--abg:radial-gradient(ellipse at 50% 100%,#2a2f3a,#0a0c12)',art:art('radial-gradient(ellipse at 50% 100%,#2a2f3a,#0a0c12)','<span style="background:linear-gradient(135deg,#eceff4,#9aa1ad);border-radius:12px;padding:6px 14px;color:#555;font-size:34px;font-weight:900">刮 刮</span> 💎'),en:'SCRATCH CARD',h:'刮刮樂 SCRATCH',p:'買一張，用手指刮開 9 格。刮出 3 個一樣的圖案，就拿到那個圖案的倍數。',tags:['手指刮','3 個一樣','最高 200×'],price:['每張 5 ~ 1,000','約 22% 會中獎'],note:'理論回報率 94%',btn:'買一張 ▶',go:scOpen},
+  {cls:'slc',vars:'--ac:#a56bff;--abg:radial-gradient(ellipse at 50% 100%,#2a1458,#0a0518)',art:art('radial-gradient(ellipse at 50% 100%,#2a1458,#0a0518)','📦 🎁 👑'),en:'MYSTERY BOX',h:'開箱抽獎 MYSTERY BOX',p:'三種箱子，打開時物品條會一路滾動，停在哪個就是你的獎。箱子越貴，大獎越大。',tags:['銅・銀・金','滾動開箱','最高 200×'],price:['箱子 20 / 100 / 500','金箱最高 200×'],note:'理論回報率 95%',btn:'開箱 ▶',go:bxOpen}
+ ]};
+ const hub=document.querySelector('.hub');
+ if(hub){
+  const bank=hub.querySelector('.t-bank');
+  const b=document.createElement('button');b.className='tile t-lottery';
+  b.innerHTML='<div class="ti">🎟</div><div class="cnt">LUCKY</div><h2>幸運彩券區</h2><p>幸運轉盤・刮刮樂<br>開箱抽獎</p>';
+  b.addEventListener('click',()=>zoneOpen('lottery'));
+  if(bank)hub.insertBefore(b,bank);else hub.appendChild(b);
+ }
+ updateWallet();
+}
+build();
+})();
+
 /* ---------- 大廳背景 ---------- */
 (function(){
  const c=$('#bg'),x=c.getContext('2d');let pts=[];
