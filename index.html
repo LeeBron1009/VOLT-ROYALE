@@ -450,6 +450,86 @@ accrue(false);
 setInterval(()=>accrue(false),60000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)accrue(false)});
 
+/* ---------- 排行榜（Firebase Realtime Database）---------- */
+const FB_URL='https://volt-royale-default-rtdb.asia-southeast1.firebasedatabase.app';   // ← 把你的 Realtime Database 網址貼在這兩個引號中間，例如 'https://xxxx-default-rtdb.asia-southeast1.firebasedatabase.app'（結尾不要加 /）
+let LBTAB='wag';
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function myUid(){let u=store.get('uid','');if(!u){u=Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-5);store.set('uid',u)}return u}
+function nick(){return store.get('nick','')}
+function netWorth(){return chips()+savings()-debt()}
+function vipOf(w){let l=0;VIP.forEach((v,i)=>{if(w>=v.need)l=i});return l}
+function lbEnabled(){return !!FB_URL}
+async function fb(path,opt,ms){
+ const c=new AbortController(),t=setTimeout(()=>c.abort(),ms||8000);
+ try{
+  const r=await fetch(FB_URL.replace(/\/$/,'')+path,Object.assign({signal:c.signal},opt||{}));
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  return await r.json();
+ }finally{clearTimeout(t)}
+}
+async function lbSubmit(){
+ if(!lbEnabled()||!nick())return false;
+ const body={name:nick().slice(0,12),wag:wagered(),net:netWorth(),t:Date.now()};
+ await fb('/leaderboard/'+myUid()+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ return true;
+}
+async function lbFetch(key){
+ const d=await fb('/leaderboard.json?orderBy='+encodeURIComponent('"'+key+'"')+'&limitToLast=30');
+ const arr=Object.keys(d||{}).map(k=>Object.assign({id:k},d[k]));
+ arr.sort((a,b)=>(+b[key]||0)-(+a[key]||0));
+ return arr;
+}
+function lbShell(inner){
+ return '<div class="panel"><h2>🏆 排行榜</h2>'+
+ '<div class="btns" style="margin-top:0"><button class="btn'+(LBTAB==='wag'?' pri':'')+'" data-lb="wag">VIP 等級</button><button class="btn'+(LBTAB==='net'?' pri':'')+'" data-lb="net">淨資產</button></div>'+
+ '<div class="hint" style="margin-top:10px">你：'+esc(nick()||'（未取名）')+' · '+VIP[vipLv()].n+' · 累計下注 '+wagered().toLocaleString()+' · 淨資產 '+netWorth().toLocaleString()+'</div>'+
+ inner+
+ '<div class="btns"><button class="btn" data-lb="refresh">重新整理</button><button class="btn" data-lb="nick">改暱稱</button><button class="btn" data-bank="close">關閉</button></div></div>';
+}
+function lbRows(arr){
+ if(!arr.length)return '<div class="hint">還沒有人上榜，你是第一個！</div>';
+ const key=LBTAB,me=myUid();
+ return '<div style="overflow-x:auto"><table class="vt" style="width:100%"><tr><th>#</th><th>玩家</th><th>VIP</th><th>'+(key==='wag'?'累計下注':'淨資產')+'</th></tr>'+
+  arr.map((p,i)=>'<tr'+(p.id===me?' class="me"':'')+'><td>'+(i<3?['🥇','🥈','🥉'][i]:(i+1))+'</td><td>'+esc(p.name||'?')+(p.id===me?'（你）':'')+'</td><td>'+VIP[vipOf(+p.wag||0)].n+'</td><td>'+(+p[key]||0).toLocaleString()+'</td></tr>').join('')+'</table></div>';
+}
+function nickHtml(){
+ return '<div class="panel"><h2>取一個暱稱</h2><div class="hint">排行榜上會顯示這個名字，最多 12 個字。</div><div class="btns"><input class="bkin" id="lbNick" maxlength="12" placeholder="你的暱稱" value="'+esc(nick())+'" style="width:200px"></div><div class="btns"><button class="btn gold" data-lb="savenick">確定</button><button class="btn" data-bank="close">取消</button></div></div>';
+}
+async function lbOpen(tab){
+ if(tab)LBTAB=tab;
+ if(!nick()){openModal(nickHtml());return}
+ if(!lbEnabled()){
+  openModal(lbShell('<div class="note">目前是「單機模式」，只看得到自己。把 Firebase 網址貼進程式裡的 FB_URL，就能和朋友一起比。</div>'));
+  return;
+ }
+ openModal(lbShell('<div class="hint">載入中⋯</div>'));
+ try{
+  await lbSubmit();
+  const arr=await lbFetch(LBTAB);
+  openModal(lbShell(lbRows(arr)));
+ }catch(e){
+  openModal(lbShell('<div class="note">連不上排行榜，等一下再按「重新整理」。（'+esc(e.message||'')+'）</div>'));
+ }
+}
+function lbAct(a){
+ if(a==='wag'||a==='net'){LBTAB=a;lbOpen();return}
+ if(a==='refresh'){lbOpen();return}
+ if(a==='nick'){openModal(nickHtml());return}
+ if(a==='savenick'){
+  const el=$('#lbNick'),v=String((el&&el.value)||'').trim().slice(0,12);
+  if(!v){toast('請輸入暱稱');return}
+  store.set('nick',v);toast('暱稱：'+v);lbOpen();
+ }
+}
+$('#modal').addEventListener('click',e=>{const t=e.target.closest('[data-lb]');if(t)lbAct(t.dataset.lb)});
+document.querySelectorAll('.wbar').forEach(w=>{
+ if(w.querySelector('.lbbtn'))return;
+ const b=document.createElement('button');b.className='bankbtn lbbtn';b.textContent='🏆 排行榜';
+ b.addEventListener('click',()=>lbOpen());w.appendChild(b);
+});
+setInterval(()=>{if(lbEnabled()&&nick())lbSubmit().catch(()=>{})},180000);
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&lbEnabled()&&nick())lbSubmit().catch(()=>{})});
+
 /* ---------- Audio ---------- */
 let AC=null,muted=store.get('muted',false);
 function beep(f,d,type,v,slide){
