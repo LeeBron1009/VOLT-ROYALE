@@ -4142,6 +4142,283 @@ function build(){
 build();
 })();
 
+/* ---------- 新功能：Google 登入 + 雲端存檔（多裝置同步）+ 備份 ---------- */
+(function(){
+/* ↓↓↓ 到 Firebase 專案設定 > 你的應用程式 > 網頁應用程式，把 firebaseConfig 裡的 5 個值貼在下面的引號中間 ↓↓↓ */
+const FIREBASE_CONFIG={apiKey:'',authDomain:'',databaseURL:'',projectId:'',appId:''};
+/* ↑↑↑ 沒填的話，頂端的「☁ 雲端存檔」按鈕只能用「備份成檔案 / 從檔案還原」 ↑↑↑ */
+const SDK='https://www.gstatic.com/firebasejs/13.2.0/';
+const SKIP=['twr','uid','jpq','muted'];            // 這些不用上傳（快取、裝置專屬的東西）
+const fmt=n=>Math.round(+n||0).toLocaleString();
+const imp=(typeof window!=='undefined'&&window.__VOLT_IMPORT)||(u=>import(u));
+const DEV=Math.random().toString(36).slice(2,8);
+const meta=(k,v)=>{const key='volt_cs_'+k;if(v===undefined)return localStorage.getItem(key);if(v===null)localStorage.removeItem(key);else localStorage.setItem(key,String(v))};
+const S={m:null,auth:null,db:null,user:null,busy:false,conflict:false,timer:0,status:'off',err:'',_cloud:null};
+const ENABLED=!!(FIREBASE_CONFIG.apiKey&&FIREBASE_CONFIG.databaseURL&&FIREBASE_CONFIG.authDomain&&FIREBASE_CONFIG.projectId);
+const NAME_OK=/^[A-Za-z0-9_\-]+$/;
+
+/* ---------- 本機存檔 <-> 一包文字 ---------- */
+function snapshot(){
+ const out={};
+ for(let i=0;i<localStorage.length;i++){
+  const k=localStorage.key(i);
+  if(!k||k.indexOf('volt_')!==0||k.indexOf('volt_cs_')===0)continue;
+  const name=k.slice(5);
+  if(SKIP.indexOf(name)>=0||!NAME_OK.test(name))continue;
+  out[name]=localStorage.getItem(k);
+ }
+ out._v='1';                                          // 保證不是空的（Firebase 不會存空物件）
+ return out;
+}
+function restore(data){
+ const del=[];
+ for(let i=0;i<localStorage.length;i++){
+  const k=localStorage.key(i);
+  if(!k||k.indexOf('volt_')!==0||k.indexOf('volt_cs_')===0)continue;
+  const name=k.slice(5);if(SKIP.indexOf(name)>=0)continue;
+  del.push(k);
+ }
+ del.forEach(k=>localStorage.removeItem(k));
+ Object.keys(data||{}).forEach(n=>{if(n!=='_v'&&NAME_OK.test(n)&&SKIP.indexOf(n)<0)localStorage.setItem('volt_'+n,data[n])});
+}
+function num(map,k){try{return +JSON.parse(map[k])||0}catch(e){return 0}}
+function summary(map){
+ const wag=num(map,'wag'),chips=map.chips===undefined?1000:num(map,'chips');
+ let lv=0;try{VIP.forEach((v,i)=>{if(wag>=v.need)lv=i})}catch(e){}
+ let vn='';try{vn=VIP[lv].n}catch(e){}
+ return{chips,sav:num(map,'sav'),debt:num(map,'debt'),wag,vip:vn,net:chips+num(map,'sav')-num(map,'debt')};
+}
+const localFresh=()=>localStorage.getItem('volt_chips')===null&&localStorage.getItem('volt_wag')===null&&localStorage.getItem('volt_twt')===null;
+
+/* ---------- 保險：覆蓋本機進度之前，一定先留備份 ---------- */
+function saveBk(){
+ if(localFresh())return;
+ const s=JSON.stringify({t:Date.now(),data:snapshot()});
+ if(!meta('bk0'))meta('bk0',s);                       // 第一次被覆蓋前的原始進度：永遠保留，不會被蓋掉
+ meta('bk',s);                                        // 最近一次被覆蓋前的進度
+}
+function bkInfo(w){try{const b=JSON.parse(meta(w));return b?b:null}catch(e){return null}}
+async function adoptLocal(){                           // 把「現在這台的進度」當成最新，覆蓋雲端
+ meta('dirty','1');
+ if(S.user){const c=await cloudGet();meta('rev',c?c.rev:0);meta('uid',S.user.uid);S.conflict=false;S.status='';await upload()}
+}
+async function restoreBk(which){
+ const b=bkInfo(which);if(!b){toast('沒有這份備份');return}
+ const cur=JSON.stringify({t:Date.now(),data:snapshot()});
+ restore(b.data);meta('bk',cur);                      // 還原前先把「現在的」存成上一份，還原錯了還可以換回來
+ if(S.user)localStorage.setItem('volt_uid',JSON.stringify(S.user.uid));
+ await adoptLocal();
+ toast('已還原，重新整理中⋯');setTimeout(()=>location.reload(),700);
+}
+function exportJson(){return JSON.stringify({app:'VOLT ROYALE',t:Date.now(),data:snapshot()},null,1)}
+function downloadBackup(){
+ const blob=new Blob([exportJson()],{type:'application/json'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+ a.download='volt-royale-backup-'+new Date().toISOString().slice(0,10)+'.json';
+ document.body.appendChild(a);a.click();a.remove();
+ const s=summary(snapshot());toast('已下載備份檔（籌碼 '+fmt(s.chips)+'）');
+}
+async function importData(text){
+ let j;try{j=JSON.parse(text)}catch(e){toast('這不是有效的備份檔');return false}
+ let d=j&&j.data;if(!d||typeof d!=='object'){toast('這不是有效的備份檔');return false}
+ const m={};Object.keys(d).forEach(k=>{const n=k.indexOf('volt_')===0?k.slice(5):k;if(typeof d[k]==='string')m[n]=d[k]});
+ if(m.chips===undefined&&m.wag===undefined&&m.twt===undefined){toast('備份檔裡沒有遊戲進度');return false}
+ const s=summary(m),now=summary(snapshot());
+ if(!confirm('要用備份檔還原嗎？\n\n備份檔：籌碼 '+fmt(s.chips)+'、存款 '+fmt(s.sav)+'、VIP '+s.vip+'\n目前這台：籌碼 '+fmt(now.chips)+'、存款 '+fmt(now.sav)+'、VIP '+now.vip+'\n\n目前這台的進度會先自動備份一份。'))return false;
+ saveBk();restore(m);
+ if(S.user)localStorage.setItem('volt_uid',JSON.stringify(S.user.uid));
+ await adoptLocal();
+ toast('已還原，重新整理中⋯');setTimeout(()=>location.reload(),700);return true;
+}
+function pickBackup(){
+ const f=document.createElement('input');f.type='file';f.accept='.json,application/json';
+ f.onchange=()=>{const r=new FileReader();r.onload=()=>importData(String(r.result));r.readAsText(f.files[0])};
+ f.click();
+}
+
+/* ---------- 畫面 ---------- */
+function injectCss(){
+ if(!document.head)return;
+ const st=document.createElement('style');
+ st.textContent=`.csbtn{white-space:nowrap}.csdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:#888;vertical-align:middle}.csdot.ok{background:#4dffa6;box-shadow:0 0 8px #4dffa6}.csdot.wait{background:#ffd166}.csdot.bad{background:#ff3b5c}.csdot.off{background:#888}
+.csrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0;text-align:left}.cscard{padding:12px;border-radius:12px;background:rgba(255,255,255,.06);font-size:13px;line-height:1.8}.cscard b{display:block;font-size:15px;color:var(--gold);margin-bottom:4px}.cscard.rec{border:1px solid #4dffa6}.csbk{margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.12)}`;
+ document.head.appendChild(st);
+}
+function label(){
+ if(!ENABLED)return '☁ 雲端存檔';
+ if(!S.user)return '☁ 登入';
+ return '☁ '+(S.user.displayName||'已登入').slice(0,6);
+}
+function dotClass(){return !ENABLED||!S.user?'off':S.conflict||S.status==='err'?'bad':(meta('dirty')==='1'||S.busy)?'wait':'ok'}
+function refreshBtns(){document.querySelectorAll('.csbtn').forEach(b=>{b.innerHTML='<span class="csdot '+dotClass()+'"></span>'+label()})}
+function when(t){if(!t)return '—';const d=new Date(+t);return d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
+function bkButtons(){
+ const b0=bkInfo('bk0'),b1=bkInfo('bk');
+ let h='<div class="csbk"><div class="hint">備份（不需要登入也能用）</div><div class="btns" style="margin-top:6px"><button class="btn" data-cs="export">備份成檔案</button><button class="btn" data-cs="import">從檔案還原</button></div>';
+ if(b0){const s=summary(b0.data);h+='<div class="btns"><button class="btn" data-cs="rbk0">還原「登入前的原始進度」（籌碼 '+fmt(s.chips)+'，'+when(b0.t)+'）</button></div>'}
+ if(b1&&(!b0||b1.t!==b0.t)){const s=summary(b1.data);h+='<div class="btns"><button class="btn" data-cs="rbk">還原「上一份被覆蓋的進度」（籌碼 '+fmt(s.chips)+'，'+when(b1.t)+'）</button></div>'}
+ return h+'</div>';
+}
+function openAccount(){
+ if(!ENABLED){
+  openModal('<div class="panel"><h2>☁ 雲端存檔</h2><div class="hint" style="text-align:left;line-height:1.8">登入 Google 帳號後，你的進度會存在雲端，換手機或電腦登入同一個帳號就能接著玩。<br><br>這個功能還沒設定：請到 Firebase 啟用 Google 登入，再把 <b>firebaseConfig</b> 貼進程式裡的 <b>FIREBASE_CONFIG</b>。</div>'+bkButtons()+'<div class="btns"><button class="btn" data-bank="close">關閉</button></div></div>');
+  return;
+ }
+ if(!S.user){
+  openModal('<div class="panel"><h2>☁ 雲端存檔</h2><div class="hint" style="text-align:left;line-height:1.8">用 Google 帳號登入後：<br>・進度自動存到雲端<br>・手機、電腦登入同一個帳號，進度會一樣<br>・排行榜和大樂透會用你的帳號當身分<br><br><b>這台裝置現在的進度不會被直接蓋掉：</b>如果雲端已經有存檔，會先讓你選要留哪一邊；而且覆蓋之前會自動備份。</div>'+(S.err?'<div class="note">'+S.err+'</div>':'')+'<div class="btns"><button class="btn gold" data-cs="login">用 Google 登入</button><button class="btn" data-bank="close">關閉</button></div>'+bkButtons()+'</div>');
+  return;
+ }
+ const st=S.conflict?'⚠️ 有衝突，需要你選一邊':(S.status==='err'?'❌ 同步失敗：'+S.err:(meta('dirty')==='1'||S.busy)?'⏳ 等待上傳':'✅ 已同步');
+ openModal('<div class="panel"><h2>☁ 雲端存檔</h2><div class="rows"><div>帳號<b style="font-size:14px">'+(S.user.displayName||'')+'</b></div><div>信箱<b style="font-size:13px">'+(S.user.email||'')+'</b></div><div>狀態<b style="font-size:14px">'+st+'</b></div><div>上次同步<b style="font-size:14px">'+when(meta('t'))+'</b></div></div><div class="hint">進度會在你操作後幾秒內自動上傳，離開頁面時也會上傳。</div><div class="btns"><button class="btn gold" data-cs="sync">立即同步</button><button class="btn" data-cs="pull">從雲端載入</button><button class="btn" data-cs="logout">登出</button><button class="btn" data-bank="close">關閉</button></div>'+bkButtons()+'</div>');
+}
+function conflictModal(cloud){
+ S.conflict=true;refreshBtns();
+ const L=summary(snapshot()),C=summary(cloud.data||{});
+ const rec=C.wag>=L.wag?'c':'l';
+ const card=(t,s,when_,r)=>'<div class="cscard'+(r?' rec':'')+'"><b>'+t+(r?'（累計下注較多）':'')+'</b>籌碼 '+fmt(s.chips)+'<br>存款 '+fmt(s.sav)+'　債務 '+fmt(s.debt)+'<br>VIP '+s.vip+'　累計下注 '+fmt(s.wag)+'<br>淨資產 '+fmt(s.net)+(when_?'<br>'+when_:'')+'</div>';
+ openModal('<div class="panel"><h2>⚠️ 兩邊的進度不一樣</h2><div class="hint" style="text-align:left">這台裝置和雲端都有進度，而且不是同一份。請選要保留哪一邊。<b>沒被選的那一份會被覆蓋</b>，但覆蓋前會先自動備份這台的進度，選錯了還可以在「☁」視窗裡還原。</div><div class="csrow">'+card('這台裝置',L,'',rec==='l')+card('雲端',C,'上傳時間 '+when(cloud.t),rec==='c')+'</div><div class="btns"><button class="btn gold" data-cs="usecloud">用雲端的</button><button class="btn" data-cs="uselocal">用這台的</button><button class="btn" data-bank="close">先不要決定</button></div></div>');
+ S._cloud=cloud;
+}
+
+/* ---------- 雲端 ---------- */
+const path=()=>'users/'+S.user.uid+'/save';
+async function cloudGet(){const r=await S.m.get(S.m.ref(S.db,path()));return r.exists()?r.val():null}
+async function upload(){
+ if(!S.user||S.busy||S.conflict)return false;
+ S.busy=true;refreshBtns();
+ try{
+  const exp=+meta('rev')||0,snap=snapshot();
+  if(JSON.stringify(snap).length>4000000){S.status='err';S.err='存檔太大';return false}
+  const res=await S.m.runTransaction(S.m.ref(S.db,path()),cur=>{
+   if(cur&&cur.rev!==exp)return;                       // 雲端已經被別台改過 → 放棄，改走衝突處理
+   return{rev:exp+1,t:Date.now(),dev:DEV,data:snap};
+  });
+  if(res.committed){
+   meta('rev',exp+1);meta('uid',S.user.uid);meta('t',Date.now());
+   meta('dirty',JSON.stringify(snapshot())===JSON.stringify(snap)?'0':'1');   // 上傳期間若又有新變動，保持「待上傳」
+   S.status='ok';S.err='';return true;
+  }
+  const c=await cloudGet();
+  if(c)conflictModal(c);
+  return false;
+ }catch(e){S.status='err';S.err=String(e.message||e);return false}
+ finally{S.busy=false;refreshBtns()}
+}
+function applyCloud(cloud){
+ saveBk();                                             // 覆蓋之前先備份
+ restore(cloud.data);
+ localStorage.setItem('volt_uid',JSON.stringify(S.user.uid));
+ meta('rev',cloud.rev);meta('uid',S.user.uid);meta('dirty','0');meta('t',Date.now());
+ S.conflict=false;toast('已載入雲端存檔，重新整理中⋯');
+ setTimeout(()=>location.reload(),600);
+}
+async function syncOnLogin(){
+ const cloud=await cloudGet();
+ const lrev=+meta('rev')||0,luid=meta('uid'),dirty=meta('dirty')==='1',uid=S.user.uid;
+ if(luid&&luid!==uid){                                  // 這台裝置的進度屬於「另一個」帳號：絕對不能複製給這個帳號
+  if(cloud){applyCloud(cloud);return}
+  saveBk();restore({});localStorage.setItem('volt_uid',JSON.stringify(uid));meta('rev',0);meta('uid',uid);meta('dirty','0');
+  await upload();toast('這是新帳號，從頭開始（原本帳號的進度還在它的雲端）');
+  setTimeout(()=>location.reload(),900);return;
+ }
+ if(!cloud){                                            // 這個帳號第一次用：把這台的進度上傳（繼承）
+  localStorage.setItem('volt_uid',JSON.stringify(uid));meta('rev',0);
+  const ok=await upload();if(ok)toast('☁ 已建立雲端存檔，這台的進度已經存上去了');return;
+ }
+ if(localFresh()){applyCloud(cloud);return}             // 新裝置：直接用雲端
+ if(luid===uid&&lrev===cloud.rev){                      // 這台是從雲端同步下來的，雲端也沒人動過
+  localStorage.setItem('volt_uid',JSON.stringify(uid));
+  if(dirty)await upload();else{S.status='ok'}
+  return;
+ }
+ if(luid===uid&&lrev<cloud.rev&&!dirty){applyCloud(cloud);return}   // 別台比較新，這台沒有未上傳的變動
+ conflictModal(cloud);                                  // 其他情況（例如這台一直沒登入過，卻也有進度）：讓使用者選
+}
+function markDirty(){
+ meta('dirty','1');refreshBtns();
+ if(!S.user||S.conflict)return;
+ clearTimeout(S.timer);S.timer=setTimeout(()=>{upload()},8000);
+}
+async function poll(){
+ if(!S.user||S.busy||S.conflict||document.hidden)return;
+ try{
+  const r=await S.m.get(S.m.ref(S.db,path()+'/rev'));
+  const rev=r.exists()?r.val():0,lrev=+meta('rev')||0;
+  if(rev>lrev){
+   const c=await cloudGet();if(!c)return;
+   if(meta('dirty')==='1')conflictModal(c);else applyCloud(c);
+  }
+ }catch(e){}
+}
+
+/* ---------- 登入 / 登出 ---------- */
+async function login(){
+ try{await S.m.signInWithPopup(S.auth,new S.m.GoogleAuthProvider())}
+ catch(e){
+  const c=e&&e.code||'';
+  S.err=c==='auth/unauthorized-domain'?'這個網址還沒加進 Firebase 的「授權網域」。請到 Authentication > Settings > Authorized domains 新增你的網站網域。':
+   c==='auth/popup-blocked'?'瀏覽器擋住了登入視窗，請允許這個網站的彈出視窗再試一次。':
+   c==='auth/operation-not-allowed'?'Firebase 還沒啟用 Google 登入（Authentication > Sign-in method）。':
+   c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request'?'登入視窗被關掉了。':String(e.message||c);
+  openAccount();
+ }
+}
+async function logout(){
+ try{if(S.user&&meta('dirty')==='1'&&!S.conflict){clearTimeout(S.timer);await upload()}}catch(e){}   // 登出前先把還沒上傳的進度送出去
+ try{await S.m.signOut(S.auth)}catch(e){}
+}
+
+/* ---------- 組裝 ---------- */
+async function init(){
+ injectCss();
+ document.querySelectorAll('.wbar').forEach(w=>{
+  if(w.querySelector('.csbtn'))return;
+  const b=document.createElement('button');b.className='bankbtn csbtn';
+  b.addEventListener('click',openAccount);w.appendChild(b);
+ });
+ refreshBtns();
+ $('#modal').addEventListener('click',async e=>{
+  const t=e.target.closest('[data-cs]');if(!t)return;
+  const a=t.dataset.cs;
+  if(a==='login'){closeModal();login()}
+  else if(a==='logout'){closeModal();await logout()}
+  else if(a==='sync'){if(S.conflict){const c=await cloudGet();if(c)conflictModal(c);return}const ok=await upload();toast(ok?'☁ 已同步':'同步沒完成：'+(S.err||'請稍後再試'));openAccount()}
+  else if(a==='pull'){const c=await cloudGet();if(c)conflictModal(c);else toast('雲端還沒有存檔')}
+  else if(a==='usecloud'){if(S._cloud)applyCloud(S._cloud)}
+  else if(a==='uselocal'){
+   if(!S._cloud)return;
+   saveBk();meta('rev',S._cloud.rev);S.conflict=false;closeModal();meta('dirty','1');
+   const ok=await upload();toast(ok?'☁ 已用這台的進度覆蓋雲端':'上傳沒完成')
+  }
+  else if(a==='export')downloadBackup();
+  else if(a==='import')pickBackup();
+  else if(a==='rbk0')restoreBk('bk0');
+  else if(a==='rbk')restoreBk('bk');
+ });
+ if(!ENABLED)return;
+ try{
+  const [A,Au,D]=await Promise.all([imp(SDK+'firebase-app.js'),imp(SDK+'firebase-auth.js'),imp(SDK+'firebase-database.js')]);
+  const app=A.initializeApp(FIREBASE_CONFIG);
+  S.m={GoogleAuthProvider:Au.GoogleAuthProvider,signInWithPopup:Au.signInWithPopup,signOut:Au.signOut,ref:D.ref,get:D.get,runTransaction:D.runTransaction};
+  S.auth=Au.getAuth(app);S.db=D.getDatabase(app);
+  Au.onAuthStateChanged(S.auth,async user=>{
+   S.user=user||null;S.conflict=false;refreshBtns();
+   if(user){try{await syncOnLogin();toast('☁ 已登入：'+(user.displayName||user.email||''))}catch(e){S.status='err';S.err=String(e.message||e)}refreshBtns()}
+  });
+ }catch(e){S.status='err';S.err='載入 Firebase 失敗：'+String(e.message||e);refreshBtns();return}
+ const _set=store.set.bind(store);                      // 任何存檔變動 → 標記待上傳
+ store.set=function(k,v){_set(k,v);if(SKIP.indexOf(k)<0)markDirty()};
+ document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){if(S.user&&meta('dirty')==='1'&&!S.conflict){clearTimeout(S.timer);upload()}}
+  else poll();
+ });
+ setInterval(()=>{if(S.user&&meta('dirty')==='1'&&!S.conflict&&!S.busy)upload()},30000);
+ setInterval(poll,60000);
+}
+init();
+if(typeof window!=='undefined')window.__CS={S,snapshot,restore,upload,syncOnLogin,markDirty,summary,applyCloud,poll,meta,localFresh,conflictModal,exportJson,importData,restoreBk,saveBk,bkInfo};
+})();
+
 /* ---------- 大廳背景 ---------- */
 (function(){
  const c=$('#bg'),x=c.getContext('2d');let pts=[];
